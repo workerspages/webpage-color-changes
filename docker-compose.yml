@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  web-monitor:
+    build: .
+    container_name: web_monitor
+    # ===================================================================
+    # ==              在这里集中管理所有配置项              ==
+    # ===================================================================
+    environment:
+      # --- 监控配置 ---
+      # 监控间隔（秒），例如 300 = 5分钟
+      - MONITOR_INTERVAL_SECONDS=300
+      
+      # 【必填】需要监控的网址，多个网址用英文逗号 "," 分隔，不要有空格
+      - MONITOR_URLS=https://www.beijing-time.org,https://dot.nyc.mn/register-your-domain
+
+      # --- Telegram 通知配置 ---
+      # 【必填】你的 Telegram Bot Token
+      - TELEGRAM_BOT_TOKEN=8295357567:AAF5w4J_PbiOE4PyWLh0vmf67enE63NXUiw
+      
+      # 【必填】你的 Telegram Chat ID (私聊或群组)
+      - TELEGRAM_CHAT_ID=-1003109316837
+      
+      # --- 邮件通知配置 (以 QQ 邮箱为例) ---
+      # 【必填】接收通知的邮箱地址
+      - TO_EMAIL=184146089@qq.com
+
+      # 【必填】SMTP 服务器地址
+      - SMTP_HOST=smtp.qq.com
+      
+      # 【选填】SMTP 服务器端口 (默认 587)
+      - SMTP_PORT=587
+      
+      # 【必填】你的发件邮箱地址 (登录 SMTP 的用户名)
+      - SMTP_USER=184146089@qq.com
+      
+      # 【必填】你的邮箱 SMTP 授权码 (不是登录密码！)
+      - SMTP_PASSWORD=ptbbemtefhmzcaaf
+      
+      # 【选填】邮件中显示的发件人地址 (默认与 SMTP_USER 相同)
+      - SMTP_FROM=184146089@qq.com
+
+    volumes:
+      # 将截图文件夹挂载到宿主机，实现数据持久化，防止容器重启后重复报警
+      - screenshots_data:/app/screenshots
+      
+    # 设置容器在 Docker 服务启动时或意外退出后自动重启
+    restart: unless-stopped
+
+# 定义具名卷，由 Docker 管理，用于持久化存储截图
+volumes:
+  screenshots_data:
