@@ -19,9 +19,9 @@ RUN apt-get update && \
     jq \
     --no-install-recommends
 
-# 2. 从官方 API 获取并安装最新的 Stable 版 Chrome 和 ChromeDriver
+# 2. 【经典可靠方案】使用 dpkg + apt-get -f install 来安装 Chrome
 RUN \
-    # a. 获取最新的 Stable 版 Chrome 和 ChromeDriver for linux64 的下载 URL
+    # a. 从 API 获取最新的 Stable 版 Chrome 和 ChromeDriver 的下载 URL
     JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" && \
     CHROME_URL=$(curl -sS ${JSON_URL} | jq -r '.channels.Stable.downloads.chrome[] | select(.platform=="linux64") | .url') && \
     DRIVER_URL=$(curl -sS ${JSON_URL} | jq -r '.channels.Stable.downloads.chromedriver[] | select(.platform=="linux64") | .url') && \
@@ -33,20 +33,24 @@ RUN \
     wget -q -O /tmp/chrome.deb "${CHROME_URL}" && \
     wget -q -O /tmp/chromedriver.zip "${DRIVER_URL}" && \
     \
-    # ======================================================================== #
-    # == 关键修正：在安装本地 .deb 包之前，必须先更新 apt 包列表 == #
-    # ======================================================================== #
+    # ========================================================================================= #
+    # == 关键修正：使用经典的 dpkg + apt-get fix-broken install 方法来处理复杂的依赖关系 == #
+    # ========================================================================================= #
+    # c. 更新包列表，为解决依赖做准备
     apt-get update && \
     \
-    # c. 使用 apt 安装 .deb 包，它现在可以正确地找到并安装所有依赖
-    apt-get install -y /tmp/chrome.deb && \
+    # d. 尝试安装 .deb 包。这步很可能会失败并报错，但这是预期的。`|| true` 确保即使失败，构建也不会停止。
+    dpkg -i /tmp/chrome.deb || true && \
     \
-    # d. 解压并安装 ChromeDriver
+    # e. 运行 "fix-broken install"，apt 会自动安装所有 chrome 所需的依赖项
+    apt-get install -f -y && \
+    \
+    # f. 解压并安装 ChromeDriver
     unzip -q /tmp/chromedriver.zip -d /tmp && \
     mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/ && \
     chmod +x /usr/local/bin/chromedriver && \
     \
-    # e. 清理工作
+    # g. 清理工作
     apt-get purge -y --auto-remove wget unzip curl jq && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/*
