@@ -17,14 +17,14 @@ services:
 
       # --- Telegram 通知配置 ---
       # 【必填】你的 Telegram Bot Token
-      - TELEGRAM_BOT_TOKEN=8295357567:AAF5w4J_PbiOE4PyWLh0vmf67enE63NXUiw
+      - TELEGRAM_BOT_TOKEN=
       
       # 【必填】你的 Telegram Chat ID (私聊或群组)
-      - TELEGRAM_CHAT_ID=-1003109316837
+      - TELEGRAM_CHAT_ID=
       
       # --- 邮件通知配置 (以 QQ 邮箱为例) ---
       # 【必填】接收通知的邮箱地址
-      - TO_EMAIL=184146089@qq.com
+      - TO_EMAIL=
 
       # 【必填】SMTP 服务器地址
       - SMTP_HOST=smtp.qq.com
@@ -33,13 +33,13 @@ services:
       - SMTP_PORT=587
       
       # 【必填】你的发件邮箱地址 (登录 SMTP 的用户名)
-      - SMTP_USER=184146089@qq.com
+      - SMTP_USER=
       
       # 【必填】你的邮箱 SMTP 授权码 (不是登录密码！)
-      - SMTP_PASSWORD=ptbbemtefhmzcaaf
+      - SMTP_PASSWORD=
       
       # 【选填】邮件中显示的发件人地址 (默认与 SMTP_USER 相同)
-      - SMTP_FROM=184146089@qq.com
+      - SMTP_FROM=
 
     volumes:
       # 将截图文件夹挂载到宿主机，实现数据持久化，防止容器重启后重复报警
