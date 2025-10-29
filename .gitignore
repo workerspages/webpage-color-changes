@@ -1,0 +1,11 @@
+# 忽略本地的 docker-compose.yml (如果存在)
+docker-compose.yml
+
+# 忽略截图数据
+screenshots_data/
+
+# 忽略 Python 缓存
+__pycache__/
+
+# 忽略日志文件
+*.log
