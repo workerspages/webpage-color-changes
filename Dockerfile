@@ -16,14 +16,12 @@ RUN apt-get update && \
     curl \
     unzip \
     wget \
-    # jq 是一个强大的命令行 JSON 解析器，是本方案的核心
     jq \
     --no-install-recommends
 
-# 2. 【最终方案】从官方 JSON API 获取最新的 Stable 版 Chrome 和 ChromeDriver
-#    此方法保证了浏览器和驱动程序的版本绝对匹配
+# 2. 从官方 API 获取并安装最新的 Stable 版 Chrome 和 ChromeDriver
 RUN \
-    # a. 从 API 获取最新的 Stable 版 Chrome 和 ChromeDriver for linux64 的下载 URL
+    # a. 获取最新的 Stable 版 Chrome 和 ChromeDriver for linux64 的下载 URL
     JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" && \
     CHROME_URL=$(curl -sS ${JSON_URL} | jq -r '.channels.Stable.downloads.chrome[] | select(.platform=="linux64") | .url') && \
     DRIVER_URL=$(curl -sS ${JSON_URL} | jq -r '.channels.Stable.downloads.chromedriver[] | select(.platform=="linux64") | .url') && \
@@ -35,7 +33,12 @@ RUN \
     wget -q -O /tmp/chrome.deb "${CHROME_URL}" && \
     wget -q -O /tmp/chromedriver.zip "${DRIVER_URL}" && \
     \
-    # c. 使用 apt 安装 .deb 包，它会自动处理所有依赖
+    # ======================================================================== #
+    # == 关键修正：在安装本地 .deb 包之前，必须先更新 apt 包列表 == #
+    # ======================================================================== #
+    apt-get update && \
+    \
+    # c. 使用 apt 安装 .deb 包，它现在可以正确地找到并安装所有依赖
     apt-get install -y /tmp/chrome.deb && \
     \
     # d. 解压并安装 ChromeDriver
@@ -44,11 +47,11 @@ RUN \
     chmod +x /usr/local/bin/chromedriver && \
     \
     # e. 清理工作
-    apt-get purge -y --auto-remove wget unzip && \
+    apt-get purge -y --auto-remove wget unzip curl jq && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/*
 
-# 3. 验证安装 (现在它们的版本应该完全一致)
+# 3. 验证安装
 RUN echo "Chrome Version: $(google-chrome --version)" && \
     echo "ChromeDriver Version: $(chromedriver --version)"
 
