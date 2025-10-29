@@ -1,0 +1,50 @@
+# 工作流名称
+name: Build and Push Docker Image to GHCR
+
+# 触发器：当代码推送到 main 分支时，或手动触发时运行
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    # 运行环境
+    runs-on: ubuntu-latest
+    # 授予工作流写入 GHCR 的权限
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. 检出代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. 登录到 GitHub Container Registry (GHCR)
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          # github.actor 是触发工作流的用户名
+          # GITHUB_TOKEN 是由 GitHub Actions 自动生成的秘密令牌
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. 提取 Docker 元数据（如标签和标签）
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # 将镜像链接到 GHCR 上的仓库
+          images: ghcr.io/${{ github.repository }}
+
+      # 4. 构建并推送 Docker 镜像
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # 使用元数据步骤生成的标签 (例如: latest, git-sha)
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
