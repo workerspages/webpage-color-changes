@@ -26,8 +26,6 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          # github.actor 是触发工作流的用户名
-          # GITHUB_TOKEN 是由 GitHub Actions 自动生成的秘密令牌
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -36,8 +34,10 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # 将镜像链接到 GHCR 上的仓库
-          images: ghcr.io/${{ github.repository }}
+          # ========================================================== #
+          # == 在这里硬编码您想要的镜像名称 == #
+          # ========================================================== #
+          images: ghcr.io/workerspages/web-monitor
 
       # 4. 构建并推送 Docker 镜像
       - name: Build and push Docker image
