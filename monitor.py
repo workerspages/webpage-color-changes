@@ -5,7 +5,7 @@ import sys
 import io
 import os
 import requests
-import json  # <-- 新增：用于解析裁剪区域配置
+import json
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from PIL import Image, ImageChops
@@ -20,9 +20,14 @@ MONITOR_URLS = os.getenv("MONITOR_URLS", "")
 # 可选项，提供默认值
 SCREENSHOT_DIR = os.getenv("SCREENSHOT_DIR", "/app/screenshots")
 THRESHOLD = int(os.getenv("THRESHOLD", "50"))
-# --- 新增：裁剪区域配置 ---
-# 格式为 JSON 字符串，例如: '{"https://example.com": [100, 200, 400, 500]}'
 CROP_AREAS_JSON = os.getenv("CROP_AREAS", "{}") 
+
+# --- 新增：截图尺寸配置 ---
+# 从环境变量读取截图宽度，如果未设置，则默认为 1200px
+SCREENSHOT_WIDTH = int(os.getenv("SCREENSHOT_WIDTH", "1200"))
+# 从环境变量读取最大截图高度，如果未设置，则默认为 10000px
+SCREENSHOT_MAX_HEIGHT = int(os.getenv("SCREENSHOT_MAX_HEIGHT", "10000"))
+
 
 # --- 浏览器配置 ---
 chrome_options = Options()
@@ -34,12 +39,17 @@ chrome_options.add_argument('--lang=zh-CN')
 chrome_options.add_argument('--font-render-hinting=medium')
 
 def get_screenshot(driver, url):
+    """使用可配置的宽度和最大高度进行截图"""
+    print(f"正在以 {SCREENSHOT_WIDTH}px 宽度访问 {url}...")
     driver.get(url)
-    max_height = 10000
+    
+    # 使用从环境变量读取的值
     total_height = driver.execute_script("return document.body.scrollHeight")
-    if total_height > max_height:
-        total_height = max_height
-    driver.set_window_size(1200, total_height)
+    if total_height > SCREENSHOT_MAX_HEIGHT:
+        print(f"警告：页面高度 {total_height}px 超过最大值 {SCREENSHOT_MAX_HEIGHT}px，将进行截断。")
+        total_height = SCREENSHOT_MAX_HEIGHT
+    
+    driver.set_window_size(SCREENSHOT_WIDTH, total_height)
     png = driver.get_screenshot_as_png()
     img = Image.open(io.BytesIO(png))
     return img
@@ -87,7 +97,6 @@ def main():
         print("错误：没有配置需要监控的网址 (MONITOR_URLS)。请在 docker-compose.yml 中设置。")
         sys.exit(1)
 
-    # --- 新增：解析 CROP_AREAS 配置 ---
     try:
         crop_areas = json.loads(CROP_AREAS_JSON)
         if crop_areas:
@@ -111,12 +120,10 @@ def main():
                 if os.path.exists(screenshot_path):
                     last_img = Image.open(screenshot_path)
 
-                    # --- 核心修改：在对比前应用裁剪 ---
                     img_to_compare_current = current_img
                     img_to_compare_last = last_img
                     
                     if url in crop_areas:
-                        # PIL 的 crop 需要一个元组 (left, top, right, bottom)
                         crop_box = tuple(crop_areas[url])
                         print(f"为 {url} 应用裁剪区域: {crop_box}")
                         try:
@@ -125,7 +132,6 @@ def main():
                         except Exception as e:
                             print(f"裁剪图片时出错: {e}。将退回对比完整图片。")
 
-                    # 使用可能被裁剪过的图片进行对比
                     if images_are_different(img_to_compare_last, img_to_compare_current, THRESHOLD):
                         subject = f"[网页变化提醒] {url} 页面发生变化"
                         content = f"网址 {url} 的页面检测到变化，请及时查看。"
@@ -138,7 +144,6 @@ def main():
                 else:
                     print(f"首次截图，保存基准快照。")
 
-                # 始终保存完整的截图，以便未来更改裁剪区域
                 current_img.save(screenshot_path)
 
             except Exception as e:
