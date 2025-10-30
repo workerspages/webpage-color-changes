@@ -5,6 +5,7 @@ import sys
 import io
 import os
 import requests
+import json  # <-- 新增：用于解析裁剪区域配置
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from PIL import Image, ImageChops
@@ -15,10 +16,13 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TO_EMAIL = os.getenv("TO_EMAIL")
 # 监控的网址，以逗号分隔
-MONITOR_URLS = os.getenv("MONITOR_URLS", "") 
+MONITOR_URLS = os.getenv("MONITOR_URLS", "")
 # 可选项，提供默认值
 SCREENSHOT_DIR = os.getenv("SCREENSHOT_DIR", "/app/screenshots")
 THRESHOLD = int(os.getenv("THRESHOLD", "50"))
+# --- 新增：裁剪区域配置 ---
+# 格式为 JSON 字符串，例如: '{"https://example.com": [100, 200, 400, 500]}'
+CROP_AREAS_JSON = os.getenv("CROP_AREAS", "{}") 
 
 # --- 浏览器配置 ---
 chrome_options = Options()
@@ -61,7 +65,6 @@ def send_email(subject, content, to_email):
     except Exception as e:
         print(f"发送邮件时发生错误: {e}")
 
-
 def send_telegram_notification(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("Telegram Bot Token 或 Chat ID 未配置，跳过发送。")
@@ -84,6 +87,15 @@ def main():
         print("错误：没有配置需要监控的网址 (MONITOR_URLS)。请在 docker-compose.yml 中设置。")
         sys.exit(1)
 
+    # --- 新增：解析 CROP_AREAS 配置 ---
+    try:
+        crop_areas = json.loads(CROP_AREAS_JSON)
+        if crop_areas:
+            print(f"已加载指定监控区域: {crop_areas}")
+    except json.JSONDecodeError:
+        print(f"错误：CROP_AREAS 环境变量格式不正确，必须是有效的 JSON。已忽略所有裁剪设置。")
+        crop_areas = {}
+    
     driver = webdriver.Chrome(options=chrome_options)
     try:
         if not os.path.exists(SCREENSHOT_DIR):
@@ -98,7 +110,23 @@ def main():
 
                 if os.path.exists(screenshot_path):
                     last_img = Image.open(screenshot_path)
-                    if images_are_different(last_img, current_img, THRESHOLD):
+
+                    # --- 核心修改：在对比前应用裁剪 ---
+                    img_to_compare_current = current_img
+                    img_to_compare_last = last_img
+                    
+                    if url in crop_areas:
+                        # PIL 的 crop 需要一个元组 (left, top, right, bottom)
+                        crop_box = tuple(crop_areas[url])
+                        print(f"为 {url} 应用裁剪区域: {crop_box}")
+                        try:
+                            img_to_compare_current = current_img.crop(crop_box)
+                            img_to_compare_last = last_img.crop(crop_box)
+                        except Exception as e:
+                            print(f"裁剪图片时出错: {e}。将退回对比完整图片。")
+
+                    # 使用可能被裁剪过的图片进行对比
+                    if images_are_different(img_to_compare_last, img_to_compare_current, THRESHOLD):
                         subject = f"[网页变化提醒] {url} 页面发生变化"
                         content = f"网址 {url} 的页面检测到变化，请及时查看。"
                         tg_message = f"<b>网页变化提醒</b>\n\n检测到页面有新变化！\n<b>网址:</b> {url}"
@@ -110,6 +138,7 @@ def main():
                 else:
                     print(f"首次截图，保存基准快照。")
 
+                # 始终保存完整的截图，以便未来更改裁剪区域
                 current_img.save(screenshot_path)
 
             except Exception as e:
