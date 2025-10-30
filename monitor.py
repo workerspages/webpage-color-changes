@@ -23,10 +23,10 @@ THRESHOLD = int(os.getenv("THRESHOLD", "50"))
 CROP_AREAS_JSON = os.getenv("CROP_AREAS", "{}") 
 
 # --- 新增：截图尺寸配置 ---
-# 从环境变量读取截图宽度，如果未设置，则默认为 1200px
-SCREENSHOT_WIDTH = int(os.getenv("SCREENSHOT_WIDTH", "1200"))
-# 从环境变量读取最大截图高度，如果未设置，则默认为 10000px
-SCREENSHOT_MAX_HEIGHT = int(os.getenv("SCREENSHOT_MAX_HEIGHT", "10000"))
+# 从环境变量读取截图宽度，如果未设置，则默认为 1920px
+SCREENSHOT_WIDTH = int(os.getenv("SCREENSHOT_WIDTH", "1920"))
+# 从环境变量读取最大截图高度，如果未设置，则默认为 15000px
+SCREENSHOT_MAX_HEIGHT = int(os.getenv("SCREENSHOT_MAX_HEIGHT", "15000"))
 
 
 # --- 浏览器配置 ---
