@@ -6,30 +6,25 @@ import io
 import os
 import requests
 import json
+import time  # <-- 1. 新增：导入时间模块
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from PIL import Image, ImageChops
 
 # --- 从环境变量加载配置 ---
-# 必填项
+# (这部分保持不变)
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 TO_EMAIL = os.getenv("TO_EMAIL")
-# 监控的网址，以逗号分隔
 MONITOR_URLS = os.getenv("MONITOR_URLS", "")
-# 可选项，提供默认值
 SCREENSHOT_DIR = os.getenv("SCREENSHOT_DIR", "/app/screenshots")
 THRESHOLD = int(os.getenv("THRESHOLD", "50"))
 CROP_AREAS_JSON = os.getenv("CROP_AREAS", "{}") 
-
-# --- 新增：截图尺寸配置 ---
-# 从环境变量读取截图宽度，如果未设置，则默认为 1920px
 SCREENSHOT_WIDTH = int(os.getenv("SCREENSHOT_WIDTH", "1920"))
-# 从环境变量读取最大截图高度，如果未设置，则默认为 15000px
 SCREENSHOT_MAX_HEIGHT = int(os.getenv("SCREENSHOT_MAX_HEIGHT", "15000"))
 
 
-# --- 浏览器配置 ---
+# --- 浏览器配置 (核心修改) ---
 chrome_options = Options()
 chrome_options.add_argument('--headless')
 chrome_options.add_argument('--disable-gpu')
@@ -37,19 +32,32 @@ chrome_options.add_argument('--no-sandbox')
 chrome_options.add_argument('--disable-dev-shm-usage') # 在 Docker 中推荐
 chrome_options.add_argument('--lang=zh-CN')
 chrome_options.add_argument('--font-render-hinting=medium')
+# --- 2. 新增：在浏览器启动时就强制设定窗口大小 ---
+INITIAL_HEIGHT = 1080  # 设置一个初始高度，后续脚本会根据页面实际高度调整
+chrome_options.add_argument(f'--window-size={SCREENSHOT_WIDTH},{INITIAL_HEIGHT}')
+
 
 def get_screenshot(driver, url):
-    """使用可配置的宽度和最大高度进行截图"""
-    print(f"正在以 {SCREENSHOT_WIDTH}px 宽度访问 {url}...")
+    """加强版的截图函数，增加了延时和调试日志"""
+    print(f"正在以 {SCREENSHOT_WIDTH}px 目标宽度访问 {url}...")
     driver.get(url)
     
-    # 使用从环境变量读取的值
     total_height = driver.execute_script("return document.body.scrollHeight")
     if total_height > SCREENSHOT_MAX_HEIGHT:
         print(f"警告：页面高度 {total_height}px 超过最大值 {SCREENSHOT_MAX_HEIGHT}px，将进行截断。")
         total_height = SCREENSHOT_MAX_HEIGHT
     
+    # 即使启动时设置了，这里再设置一次以确保高度正确
     driver.set_window_size(SCREENSHOT_WIDTH, total_height)
+    
+    # --- 3. 核心修改：等待渲染并增加调试日志 ---
+    print("等待 2 秒让页面根据窗口大小重新渲染...")
+    time.sleep(2)
+    
+    # 打印浏览器报告的当前实际窗口大小
+    actual_size = driver.get_window_size()
+    print(f"浏览器报告的实际窗口尺寸: {actual_size['width']}x{actual_size['height']}")
+
     png = driver.get_screenshot_as_png()
     img = Image.open(io.BytesIO(png))
     return img
