@@ -46,8 +46,8 @@ jobs:
           # == 【修改】在这里列出所有要推送的镜像名称 == #
           # ================================================================= #
           images: |
-            ghcr.io/workerspages/web-monitor
-            yesyunxin/web-monitor
+            ghcr.io/workerspages/webpage-color-changes
+            yesyunxin/webpage-color-changes
 
       # 5. 构建并同时推送到所有仓库
       - name: Build and push Docker image
