@@ -58,3 +58,5 @@ jobs:
           # 使用元数据步骤生成的所有标签和名称
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # --- ↓↓↓ 添加这一行以禁用缓存 ↓↓↓ ---
+          no-cache: true
