@@ -1,6 +1,5 @@
-# --- STAGE 1: Build Environment ---
-# 使用一个包含完整构建工具的基础镜像
-FROM python:3.10-slim-bookworm as builder
+# 使用一个轻量级的 Python 基础镜像
+FROM python:3.10-slim-bookworm
 
 # 设置工作目录
 WORKDIR /app
@@ -11,6 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # 1. 安装基础工具和 Chrome 运行所需的全部依赖库
 RUN apt-get update && \
     apt-get install -y \
+    msmtp \
     curl unzip wget jq \
     libglib2.0-0 libnss3 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
     libcups2 libgdk-pixbuf2.0-0 libgtk-3-0 libasound2 libx11-xcb1 \
@@ -28,44 +28,25 @@ RUN \
     dpkg -i /tmp/chrome.deb || apt-get install -f -y && \
     unzip -q /tmp/chromedriver.zip -d /tmp && \
     mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/ && \
-    chmod +x /usr/local/bin/chromedriver && \
-    rm -rf /tmp/*
+    chmod +x /usr/local/bin/chromedriver
 
 # 3. 安装 Python 依赖
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 4. 拷贝应用代码
+# 4. 拷贝所有应用代码
 COPY . .
 
+# 5. 【关键修正】赋予启动脚本执行权限
+RUN chmod +x /app/entrypoint.sh
 
-# --- STAGE 2: Final Production Image ---
-# 使用一个干净的、轻量级的 Python 镜像
-FROM python:3.10-slim-bookworm
+# 6. 清理不必要的文件以减小镜像大小
+RUN apt-get purge -y --auto-remove wget unzip curl jq && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/*
 
-# 设置工作目录
-WORKDIR /app
-
-# 从 builder 阶段拷贝所有必要的系统库
-COPY --from=builder /lib/x86_64-linux-gnu/ /lib/x86_64-linux-gnu/
-COPY --from=builder /usr/lib/x86_64-linux-gnu/ /usr/lib/x86_64-linux-gnu/
-COPY --from=builder /usr/share/fonts/ /usr/share/fonts/
-COPY --from=builder /etc/fonts/ /etc/fonts/
-
-# 从 builder 阶段拷贝 Chrome, ChromeDriver 和 Python 虚拟环境
-COPY --from=builder /opt/google/chrome/ /opt/google/chrome/
-COPY --from=builder /usr/local/bin/chromedriver /usr/local/bin/chromedriver
-COPY --from=builder /usr/local/bin/google-chrome /usr/local/bin/google-chrome
-COPY --from=builder /usr/local/lib/python3.10/site-packages/ /usr/local/lib/python3.10/site-packages/
-
-# 从 builder 阶段拷贝应用代码
-COPY --from=builder /app /app
-
-# 设置 PATH 环境变量以找到 google-chrome
-ENV PATH="/opt/google/chrome:${PATH}"
-
-# 暴露 Gunicorn 运行的端口
+# 7. 暴露 Gunicorn 运行的端口
 EXPOSE 5000
 
-# 容器启动时执行的命令
+# 8. 容器启动时执行的命令
 ENTRYPOINT ["/app/entrypoint.sh"]
