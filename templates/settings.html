@@ -1,36 +1,42 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <title>设置 - 网页监控系统</title>
-</head>
-<body>
-    <h1>网页变化监控设置 <a href="{{ url_for('logout') }}" style="font-size: small;">退出登录</a></h1>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <p style="color:green;"><b>{{ messages[0] }}</b></p>
-      {% endif %}
-    {% endwith %}
+<!-- templates/settings.html -->
+{% extends "base.html" %}
 
-    <form method="post">
-        <h3>基础配置</h3>
-        <label for="monitor_urls">监控网址 (多个用逗号隔开):</label><br>
-        <textarea name="monitor_urls" rows="4" cols="80">{{ config.monitor_urls }}</textarea><br><br>
-        
-        <label for="monitor_interval_seconds">监控间隔 (秒):</label><br>
-        <input type="number" name="monitor_interval_seconds" value="{{ config.monitor_interval_seconds }}"><br><br>
+{% block title %}监控设置 - {{ super() }}{% endblock %}
 
-        <hr>
-        <h3>邮件通知配置 (SMTP)</h3>
-        <label>SMTP 主机:</label><br>
-        <input type="text" name="smtp_host" value="{{ config.smtp_host }}"><br><br>
-        
-        <label>SMTP 用户:</label><br>
-        <input type="text" name="smtp_user" value="{{ config.smtp_user }}"><br><br>
-        
-        <!-- ... 在这里添加所有其他的表单字段 ... -->
+{% block content %}
+<h1 class="mb-4">监控设置</h1>
 
-        <button type="submit">保存设置</button>
-    </form>
-</body>
-</html>
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+      {{ messages[0] }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  {% endif %}
+{% endwith %}
+
+<form method="post">
+    <div class="card shadow-sm">
+        <div class="card-header">
+            <h4>基础配置</h4>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="monitor_urls" class="form-label"><strong>监控网址 (多个用英文逗号隔开)</strong></label>
+                <textarea class="form-control" id="monitor_urls" name="monitor_urls" rows="4">{{ config.monitor_urls }}</textarea>
+                <div class="form-text">每行一个或用逗号分隔多个URL。</div>
+            </div>
+            <div class="mb-3">
+                <label for="monitor_interval_seconds" class="form-label"><strong>监控间隔 (秒)</strong></label>
+                <input type="number" class="form-control" id="monitor_interval_seconds" name="monitor_interval_seconds" value="{{ config.monitor_interval_seconds }}">
+            </div>
+        </div>
+    </div>
+
+    <!-- 您可以为 Telegram 和 SMTP 添加类似的 card-body 结构 -->
+    
+    <div class="mt-4">
+        <button type="submit" class="btn btn-primary btn-lg">保存所有设置</button>
+    </div>
+</form>
+{% endblock %}
