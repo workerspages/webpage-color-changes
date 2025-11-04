@@ -1,74 +1,181 @@
 {% extends "base.html" %}
 
-{% block title %}仪表盘 - 监控系统{% endblock %}
+{% block title %}仪表盘 - 网页变化监控系统{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="mb-0">监控仪表盘</h1>
-    <div>
-        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">监控仪表盘</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-sm btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bell" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92L8 1.918zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6z"/></svg>
             通知设置
         </button>
-        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
+        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
             添加新目标
         </button>
     </div>
 </div>
 
-<!-- 监控目标表格 -->
-<div class="card shadow-sm">
-    <div class="card-body">
-        <table class="table table-hover align-middle">
-            <thead>
-                <tr>
-                    <th>状态</th>
-                    <th>监控目标</th>
-                    <th>调度计划 (Cron)</th>
-                    <!-- ↓↓↓ 关键新增 ↓↓↓ -->
-                    <th class="text-center">最新快照</th> 
-                    <!-- ↑↑↑ 关键新增 ↑↑↑ -->
-                    <th>上次检查</th>
-                    <th>上次变化</th>
-                    <th>操作</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for target in targets %}
-                <tr>
-                    <td><!-- Active/Inactive Badge --></td>
-                    <td>
-                        <strong>{{ target.name or '未命名' }}</strong><br>
-                        <small><a href="{{ target.url }}" target="_blank">{{ target.url[:50] }}{% if target.url|length > 50 %}...{% endif %}</a></small>
-                    </td>
-                    <td><code>{{ target.cron_schedule }}</code></td>
-                    <!-- ↓↓↓ 关键新增：显示缩略图 ↓↓↓ -->
-                    <td class="text-center">
-                        <a href="#" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" 
-                           data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}"
-                           data-img-name="{{ target.name or target.url }}">
-                            <img src="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}?t={{ now()|string }}" 
-                                 alt="快照预览" class="img-thumbnail" style="max-width: 150px; max-height: 80px;"
-                                 onerror="this.style.display='none'">
-                        </a>
-                    </td>
-                    <!-- ↑↑↑ 关键新增：显示缩略图 ↑↑↑ -->
-                    <td>{{ target.last_checked.strftime('%Y-%m-%d %H:%M:%S') if target.last_checked }}</td>
-                    <td>{{ target.last_changed.strftime('%Y-%m-%d %H:%M:%S') if target.last_changed }}</td>
-                    <td>
-                        <!-- 编辑和删除按钮 (不变) -->
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="7" class="text-center py-5"><h4>还没有监控目标</h4><p>请点击右上角的 "添加新目标" 来开始。</p></td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, message in messages %}
+      <div class="alert alert-{{ category or 'success' }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th scope="col">状态</th>
+                <th scope="col">监控目标</th>
+                <th scope="col">调度计划 (Cron)</th>
+                <th scope="col" class="text-center">最新快照</th>
+                <th scope="col">上次检查</th>
+                <th scope="col">上次变化</th>
+                <th scope="col">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for target in targets %}
+            <tr>
+                <td>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="toggle-{{ target.id }}" 
+                               data-id="{{ target.id }}" onchange="toggleTarget(this)" {% if target.is_active %}checked{% endif %}>
+                    </div>
+                </td>
+                <td>
+                    <strong>{{ target.name or '未命名目标' }}</strong><br>
+                    <small><a href="{{ target.url }}" target="_blank" title="{{ target.url }}">{{ target.url[:50] }}{% if target.url|length > 50 %}...{% endif %}</a></small>
+                </td>
+                <td><code>{{ target.cron_schedule }}</code></td>
+                <td class="text-center">
+                    <a href="#" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" 
+                       data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}"
+                       data-img-name="{{ target.name or target.url }}">
+                        <img src="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}?t={{ now().timestamp()|int }}" 
+                             alt="快照预览" class="img-thumbnail" style="max-width: 150px; max-height: 80px; display: none;"
+                             onload="this.style.display='inline-block'"
+                             onerror="this.parentElement.innerHTML = '<span class=&quot;text-muted&quot;>暂无快照</span>'">
+                    </a>
+                </td>
+                <td>{{ target.last_checked.strftime('%y-%m-%d %H:%M:%S') if target.last_checked else '从未' }}</td>
+                <td>{{ target.last_changed.strftime('%y-%m-%d %H:%M:%S') if target.last_changed else '无变化' }}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#targetModal"
+                            data-action="edit"
+                            data-id="{{ target.id }}"
+                            data-name="{{ target.name }}"
+                            data-url="{{ target.url }}"
+                            data-cron="{{ target.cron_schedule }}"
+                            data-width="{{ target.screenshot_width }}"
+                            data-height="{{ target.screenshot_max_height }}"
+                            data-threshold="{{ target.threshold }}"
+                            data-crop="{{ target.crop_area }}"
+                            data-active="{{ 'on' if target.is_active else 'off' }}">
+                        编辑
+                    </button>
+                    <form action="{{ url_for('delete_target', target_id=target.id) }}" method="post" style="display:inline;" onsubmit="return confirm('您确定要永久删除这个监控目标吗？');">
+                       <button type="submit" class="btn btn-sm btn-outline-danger">删除</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center py-5">
+                <h4>还没有监控目标</h4>
+                <p class="text-muted">请点击右上角的 "添加新目标" 来开始您的第一次监控。</p>
+            </td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- 添加/编辑目标的模态框 -->
+<div class="modal fade" id="targetModal" tabindex="-1" aria-labelledby="targetModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form id="targetForm" method="post">
+        <div class="modal-header">
+          <h5 class="modal-title" id="targetModalLabel">添加新目标</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="target_id" name="target_id">
+            <div class="mb-3">
+                <label for="name" class="form-label">监控名称 (可选)</label>
+                <input type="text" class="form-control" id="name" name="name" placeholder="例如：苹果官网首页">
+            </div>
+            <div class="mb-3">
+                <label for="url" class="form-label">监控网址 (URL)</label>
+                <input type="url" class="form-control" id="url" name="url" placeholder="https://www.example.com" required>
+            </div>
+            <div class="mb-3">
+                <label for="cron_schedule" class="form-label">Cron 调度计划</label>
+                <input type="text" class="form-control" id="cron_schedule" name="cron_schedule" value="*/5 * * * *" required>
+                <div class="form-text">默认为每5分钟。格式: 分 时 日 月 周。 <a href="https://crontab.guru/" target="_blank">Cron 表达式助手</a></div>
+            </div>
+            <hr>
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="screenshot_width" class="form-label">截图宽度 (px)</label>
+                    <input type="number" class="form-control" id="screenshot_width" name="screenshot_width" value="1920">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="screenshot_max_height" class="form-label">最大高度 (px)</label>
+                    <input type="number" class="form-control" id="screenshot_max_height" name="screenshot_max_height" value="15000">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="threshold" class="form-label">差异阈值</label>
+                    <input type="number" class="form-control" id="threshold" name="threshold" value="500">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="crop_area" class="form-label">指定区域 (JSON)</label>
+                <input type="text" class="form-control" id="crop_area" name="crop_area" placeholder="例如：[100, 200, 800, 600]">
+                <div class="form-text">格式：[左, 上, 右, 下]。留空表示监控整个页面。</div>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="is_active" name="is_active" checked>
+                <label class="form-check-label" for="is_active">启用此监控任务</label>
+            </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- 通知设置的模态框 -->
+<div class="modal fade" id="notificationSettingsModal" tabindex="-1" aria-labelledby="notificationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form action="{{ url_for('save_notifications') }}" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="notificationModalLabel">全局通知设置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- ... 这里是通知设置的完整表单，与上一版 settings.html 中的内容相同 ... -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存通知设置</button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
-<!-- ↓↓↓ 关键新增：图片预览模态框 ↓↓↓ -->
+<!-- 图片预览模态框 -->
 <div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
@@ -82,37 +189,81 @@
     </div>
   </div>
 </div>
-<!-- ↑↑↑ 关键新增：图片预览模态框 ↑↑↑ -->
-
-
-<!-- 添加/编辑目标的模态框 (不变) -->
-<!-- 通知设置的模态框 (不变) -->
-
 {% endblock %}
 
-
 {% block scripts %}
-<!-- ↓↓↓ 关键新增：控制模态框图片内容的 JavaScript ↓↓↓ -->
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // --- 控制图片预览模态框 ---
     var imagePreviewModal = document.getElementById('imagePreviewModal');
-    imagePreviewModal.addEventListener('show.bs.modal', function (event) {
-        // 触发模态框的按钮
-        var button = event.relatedTarget;
-        
-        // 从 data-* 属性中提取信息
-        var imageUrl = button.getAttribute('data-img-url');
-        var imageName = button.getAttribute('data-img-name');
-        
-        // 更新模态框的内容
-        var modalTitle = imagePreviewModal.querySelector('.modal-title');
-        var modalImage = imagePreviewModal.querySelector('#modalImagePreview');
-        
-        modalTitle.textContent = '快照预览: ' + imageName;
-        // 添加时间戳参数来防止浏览器缓存旧图片
-        modalImage.src = imageUrl + '?t=' + new Date().getTime();
-    });
+    if(imagePreviewModal) {
+        imagePreviewModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var imageUrl = button.getAttribute('data-img-url');
+            var imageName = button.getAttribute('data-img-name');
+            var modalTitle = imagePreviewModal.querySelector('.modal-title');
+            var modalImage = imagePreviewModal.querySelector('#modalImagePreview');
+            modalTitle.textContent = '快照预览: ' + imageName;
+            modalImage.src = imageUrl + '?t=' + new Date().getTime(); // 防止缓存
+        });
+    }
+
+    // --- 控制添加/编辑目标模态框 ---
+    var targetModal = document.getElementById('targetModal');
+    if(targetModal) {
+        targetModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var action = button.getAttribute('data-action');
+            var form = document.getElementById('targetForm');
+            var modalTitle = targetModal.querySelector('.modal-title');
+            
+            if (action === 'add') {
+                modalTitle.textContent = '添加新目标';
+                form.action = "{{ url_for('add_target') }}";
+                form.reset(); // 清空表单
+                document.getElementById('is_active').checked = true;
+
+            } else if (action === 'edit') {
+                modalTitle.textContent = '编辑监控目标';
+                form.action = "{{ url_for('edit_target') }}";
+                
+                // 填充表单数据
+                document.getElementById('target_id').value = button.getAttribute('data-id');
+                document.getElementById('name').value = button.getAttribute('data-name');
+                document.getElementById('url').value = button.getAttribute('data-url');
+                document.getElementById('cron_schedule').value = button.getAttribute('data-cron');
+                document.getElementById('screenshot_width').value = button.getAttribute('data-width');
+                document.getElementById('screenshot_max_height').value = button.getAttribute('data-height');
+                document.getElementById('threshold').value = button.getAttribute('data-threshold');
+                document.getElementById('crop_area').value = button.getAttribute('data-crop');
+                document.getElementById('is_active').checked = (button.getAttribute('data-active') === 'on');
+            }
+        });
+    }
 });
+
+// --- 控制状态切换开关 ---
+function toggleTarget(element) {
+    var targetId = element.dataset.id;
+    fetch('/target/toggle/' + targetId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // (可选) 在这里可以添加一个小的成功提示，例如使用 Toast
+            console.log('Target ' + targetId + ' status changed to: ' + data.is_active);
+        } else {
+            alert('状态更新失败: ' + data.message);
+            element.checked = !element.checked; // 恢复原状
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('网络错误，状态更新失败。');
+        element.checked = !element.checked; // 恢复原状
+    });
+}
 </script>
-<!-- ↑↑↑ 关键新增：控制模态框图片内容的 JavaScript ↑↑↑ -->
 {% endblock %}
