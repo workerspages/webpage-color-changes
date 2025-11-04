@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘 - 监控系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">监控仪表盘</h1>
+    <div>
+        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">通知设置</button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
+            <svg><!-- ... icon ... --></svg> 添加新目标
+        </button>
+    </div>
+</div>
+
+<!-- 监控目标表格 -->
+<div class="card shadow-sm">
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>状态</th>
+                    <th>监控网址</th>
+                    <th>调度计划 (Cron)</th>
+                    <th>上次检查</th>
+                    <th>上次变化</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for target in targets %}
+                <tr>
+                    <td><!-- Active/Inactive Badge --></td>
+                    <td>{{ target.url }}</td>
+                    <td><code>{{ target.cron_schedule }}</code></td>
+                    <td>{{ target.last_checked }}</td>
+                    <td>{{ target.last_changed }}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="edit" data-id="{{ target.id }}" ... >编辑</button>
+                        <form action="{{ url_for('delete_target', target_id=target.id) }}" method="post" style="display:inline;">
+                           <button type="submit" class="btn btn-sm btn-outline-danger">删除</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center">还没有监控目标，请点击右上角添加。</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 添加/编辑目标的模态框 -->
+<div class="modal fade" id="targetModal" ...>
+    <!-- Modal Content: Form for URL, Cron, Width, Threshold, etc. -->
+</div>
+
+<!-- 通知设置的模态框 -->
+<div class="modal fade" id="notificationSettingsModal" ...>
+    <!-- Modal Content: Form for SMTP and Telegram settings -->
+</div>
+{% endblock %}
