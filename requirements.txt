@@ -1,3 +1,10 @@
+# requirements.txt
 requests
 selenium
 Pillow
+# --- 新增依赖 ---
+Flask
+Flask-SQLAlchemy
+APScheduler
+gunicorn
+werkzeug
