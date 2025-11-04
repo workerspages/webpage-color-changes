@@ -65,12 +65,15 @@ RUN echo "Chrome Version: $(google-chrome --version)" && \
 
 # 5. 安装 Python 依赖
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 安装 Flask 用于初始化数据库
+RUN pip install --no-cache-dir -r requirements.txt Flask
 
 # 6. 拷贝应用代码和启动脚本
-COPY monitor.py .
-COPY entrypoint.sh .
+COPY . /app/
 RUN chmod +x entrypoint.sh
 
-# 7. 定义容器启动命令
+# 8. 暴露端口
+EXPOSE 5000
+
+# 9. 定义容器启动命令
 ENTRYPOINT ["/app/entrypoint.sh"]
