@@ -6,7 +6,7 @@ import io
 import json
 import time
 from datetime import datetime
-import traceback
+import traceback 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -78,12 +78,13 @@ class User(db.Model):
 
 # --- 3. 辅助函数 ---
 def get_screenshot(driver, url, width, max_height):
-    print(f"[{url}] 正在以 {width}px 宽度截图...")
+    print(f"[DEBUG][get_screenshot] 准备截图，URL: {url}")
     total_height = driver.execute_script("return document.body.scrollHeight")
     if total_height > max_height: total_height = max_height
     driver.set_window_size(width, total_height if total_height > 0 else 1080)
     time.sleep(3)
     png = driver.get_screenshot_as_png()
+    print("[DEBUG][get_screenshot] 截图成功。")
     return Image.open(io.BytesIO(png))
 
 def images_are_different(img1, img2, threshold):
@@ -131,7 +132,7 @@ def send_telegram_notification(message, config):
     except Exception as e: print(f"发送 Telegram 通知时发生异常: {e}")
 
 
-# --- 4. 核心监控与调度逻辑 ---
+# --- 4. 核心监控与调度逻辑 (带有强力调试) ---
 def execute_target_check(target_id):
     print(f"\n[DEBUG] execute_target_check 函数被调用, 目标ID: {target_id}")
     with app.app_context():
@@ -161,7 +162,7 @@ def execute_target_check(target_id):
             print(f"[DEBUG] 已访问初始 URL: {target.url}")
             
             if target.login_method == 'cookie' and target.cookies:
-                print("[*] 正在使用 Cookie 方式登录...")
+                print("[DEBUG] 检测到登录方式: Cookie")
                 try:
                     cookies = json.loads(target.cookies)
                     for cookie in cookies:
@@ -172,7 +173,7 @@ def execute_target_check(target_id):
                 except Exception as e: print(f"[!!!] 加载 Cookies 失败: {e}")
 
             elif target.login_method == 'credentials' and all([target.login_username, target.login_password, target.username_selector, target.password_selector, target.submit_button_selector]):
-                print("[*] 正在使用 账号密码 方式登录...")
+                print("[DEBUG] 检测到登录方式: 账号密码")
                 try:
                     wait = WebDriverWait(driver, 10)
                     user_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, target.username_selector)))
@@ -187,11 +188,13 @@ def execute_target_check(target_id):
             screenshot_path = os.path.join(SCREENSHOT_DIR, target.screenshot_filename)
             
             if os.path.exists(screenshot_path):
+                print("[DEBUG] 发现旧快照，准备进行对比...")
                 last_img = Image.open(screenshot_path)
                 img_to_compare_current, img_to_compare_last = current_img, last_img
                 try:
                     crop_box = json.loads(target.crop_area)
                     if isinstance(crop_box, list) and len(crop_box) == 4:
+                        print(f"[DEBUG] 应用裁剪区域: {crop_box}")
                         img_to_compare_current = current_img.crop(tuple(crop_box))
                         img_to_compare_last = last_img.crop(tuple(crop_box))
                 except (json.JSONDecodeError, TypeError, ValueError): pass
@@ -209,6 +212,7 @@ def execute_target_check(target_id):
             else: print(f"[*] 首次截图，保存基准: {target.url}")
 
             current_img.save(screenshot_path)
+            print(f"[DEBUG] 新快照已保存至: {screenshot_path}")
             target.last_checked = datetime.now()
             db.session.commit()
         except Exception as e:
@@ -360,3 +364,35 @@ def save_notifications():
     db.session.add(settings)
     db.session.commit()
     flash('通知设置已成功保存！', 'success')
+    return redirect(url_for('dashboard'))
+
+
+# --- 6. 启动与初始化 ---
+@app.cli.command("init-db")
+def init_db():
+    """初始化数据库并创建管理员"""
+    db.create_all()
+    admin_user = os.environ.get('ADMIN_USER', 'admin')
+    admin_pass = os.environ.get('ADMIN_PASSWORD', 'admin')
+    user = User.query.filter_by(username=admin_user).first()
+    if not user:
+        user = User(username=admin_user)
+        db.session.add(user)
+    user.password_hash = generate_password_hash(admin_pass, method='pbkdf2:sha256')
+    if not NotificationSettings.query.first():
+        db.session.add(NotificationSettings())
+    db.session.commit()
+    print(f"数据库初始化完成。管理员 '{admin_user}' 已配置。")
+
+with app.app_context():
+    db.create_all()
+    if not NotificationSettings.query.first():
+        db.session.add(NotificationSettings())
+        db.session.commit()
+    
+    if not scheduler.running:
+        scheduler.start()
+        print("[SCHEDULER] 后台调度器已成功启动。")
+    
+    print("[SCHEDULER] 应用启动，正在从数据库同步所有任务...")
+    sync_scheduler_from_db()
