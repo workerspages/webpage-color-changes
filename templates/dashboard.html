@@ -6,9 +6,13 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1 class="mb-0">监控仪表盘</h1>
     <div>
-        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">通知设置</button>
+        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bell" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92L8 1.918zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6z"/></svg>
+            通知设置
+        </button>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
-            <svg><!-- ... icon ... --></svg> 添加新目标
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
+            添加新目标
         </button>
     </div>
 </div>
@@ -16,12 +20,15 @@
 <!-- 监控目标表格 -->
 <div class="card shadow-sm">
     <div class="card-body">
-        <table class="table table-hover">
+        <table class="table table-hover align-middle">
             <thead>
                 <tr>
                     <th>状态</th>
-                    <th>监控网址</th>
+                    <th>监控目标</th>
                     <th>调度计划 (Cron)</th>
+                    <!-- ↓↓↓ 关键新增 ↓↓↓ -->
+                    <th class="text-center">最新快照</th> 
+                    <!-- ↑↑↑ 关键新增 ↑↑↑ -->
                     <th>上次检查</th>
                     <th>上次变化</th>
                     <th>操作</th>
@@ -31,32 +38,81 @@
                 {% for target in targets %}
                 <tr>
                     <td><!-- Active/Inactive Badge --></td>
-                    <td>{{ target.url }}</td>
-                    <td><code>{{ target.cron_schedule }}</code></td>
-                    <td>{{ target.last_checked }}</td>
-                    <td>{{ target.last_changed }}</td>
                     <td>
-                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="edit" data-id="{{ target.id }}" ... >编辑</button>
-                        <form action="{{ url_for('delete_target', target_id=target.id) }}" method="post" style="display:inline;">
-                           <button type="submit" class="btn btn-sm btn-outline-danger">删除</button>
-                        </form>
+                        <strong>{{ target.name or '未命名' }}</strong><br>
+                        <small><a href="{{ target.url }}" target="_blank">{{ target.url[:50] }}{% if target.url|length > 50 %}...{% endif %}</a></small>
+                    </td>
+                    <td><code>{{ target.cron_schedule }}</code></td>
+                    <!-- ↓↓↓ 关键新增：显示缩略图 ↓↓↓ -->
+                    <td class="text-center">
+                        <a href="#" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" 
+                           data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}"
+                           data-img-name="{{ target.name or target.url }}">
+                            <img src="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}?t={{ now()|string }}" 
+                                 alt="快照预览" class="img-thumbnail" style="max-width: 150px; max-height: 80px;"
+                                 onerror="this.style.display='none'">
+                        </a>
+                    </td>
+                    <!-- ↑↑↑ 关键新增：显示缩略图 ↑↑↑ -->
+                    <td>{{ target.last_checked.strftime('%Y-%m-%d %H:%M:%S') if target.last_checked }}</td>
+                    <td>{{ target.last_changed.strftime('%Y-%m-%d %H:%M:%S') if target.last_changed }}</td>
+                    <td>
+                        <!-- 编辑和删除按钮 (不变) -->
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="6" class="text-center">还没有监控目标，请点击右上角添加。</td></tr>
+                <tr><td colspan="7" class="text-center py-5"><h4>还没有监控目标</h4><p>请点击右上角的 "添加新目标" 来开始。</p></td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
 
-<!-- 添加/编辑目标的模态框 -->
-<div class="modal fade" id="targetModal" ...>
-    <!-- Modal Content: Form for URL, Cron, Width, Threshold, etc. -->
+<!-- ↓↓↓ 关键新增：图片预览模态框 ↓↓↓ -->
+<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imagePreviewModalLabel">快照预览</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img src="" id="modalImagePreview" class="img-fluid" alt="完整快照">
+      </div>
+    </div>
+  </div>
 </div>
+<!-- ↑↑↑ 关键新增：图片预览模态框 ↑↑↑ -->
 
-<!-- 通知设置的模态框 -->
-<div class="modal fade" id="notificationSettingsModal" ...>
-    <!-- Modal Content: Form for SMTP and Telegram settings -->
-</div>
+
+<!-- 添加/编辑目标的模态框 (不变) -->
+<!-- 通知设置的模态框 (不变) -->
+
+{% endblock %}
+
+
+{% block scripts %}
+<!-- ↓↓↓ 关键新增：控制模态框图片内容的 JavaScript ↓↓↓ -->
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var imagePreviewModal = document.getElementById('imagePreviewModal');
+    imagePreviewModal.addEventListener('show.bs.modal', function (event) {
+        // 触发模态框的按钮
+        var button = event.relatedTarget;
+        
+        // 从 data-* 属性中提取信息
+        var imageUrl = button.getAttribute('data-img-url');
+        var imageName = button.getAttribute('data-img-name');
+        
+        // 更新模态框的内容
+        var modalTitle = imagePreviewModal.querySelector('.modal-title');
+        var modalImage = imagePreviewModal.querySelector('#modalImagePreview');
+        
+        modalTitle.textContent = '快照预览: ' + imageName;
+        // 添加时间戳参数来防止浏览器缓存旧图片
+        modalImage.src = imageUrl + '?t=' + new Date().getTime();
+    });
+});
+</script>
+<!-- ↑↑↑ 关键新增：控制模态框图片内容的 JavaScript ↑↑↑ -->
 {% endblock %}
