@@ -25,7 +25,7 @@ SCREENSHOT_DIR = "/app/screenshots"
 if not os.path.exists(SCREENSHOT_DIR): os.makedirs(SCREENSHOT_DIR)
 
 # 配置
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_secret_and_secure_key_dev')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_secret_and_secure_key_for_development')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.instance_path, 'monitoring.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -278,6 +278,20 @@ def toggle_target(target_id):
     db.session.commit()
     sync_scheduler_from_db()
     return jsonify({'status': 'success', 'is_active': target.is_active})
+
+@app.route('/target/execute/<int:target_id>', methods=['POST'])
+def execute_manual_check(target_id):
+    """手动触发一次监控检查"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    target = MonitorTarget.query.get_or_404(target_id)
+    
+    # 直接调用核心检查函数
+    execute_target_check(target.id)
+    
+    flash(f"已手动为 '{target.name or target.url}' 触发了一次监控检查。", 'success')
+    return redirect(url_for('dashboard'))
 
 @app.route('/notifications/save', methods=['POST'])
 def save_notifications():
