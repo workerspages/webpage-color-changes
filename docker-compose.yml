@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  web-monitor:
+    image: yesyunxin/webpage-color-changes:latest # 或您自己构建的镜像
+    container_name: webpage_monitor
+    restart: always
+    ports:
+      # 将容器的 5000 端口映射到主机的 8080 端口
+      - "8080:5000"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      # 将截图数据持久化
+      - ./screenshots_data:/app/screenshots
+      # 将 SQLite 数据库文件持久化
+      - ./instance_data:/app/instance
+    environment:
+      - TZ=Asia/Shanghai
+      # (可选) 为 Flask session 设置一个更安全的密钥
+      # - SECRET_KEY=your_super_secret_key_here
