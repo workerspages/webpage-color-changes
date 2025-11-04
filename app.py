@@ -6,6 +6,9 @@ import io
 import json
 import time
 import traceback 
+# --- ↓↓↓ 关键修正：添加缺失的 datetime 导入 ↓↓↓ ---
+from datetime import datetime
+# --- ↑↑↑ 关键修正：添加缺失的 datetime 导入 ↑↓↓ ---
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -17,9 +20,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-# --- ↓↓↓ 关键修正：添加缺失的 Image 和 ImageChops 导入 ↓↓↓ ---
 from PIL import Image, ImageChops
-# --- ↑↑↑ 关键修正：添加缺失的 Image 和 ImageChops 导入 ↑↑↑ ---
 
 # --- 1. 初始化应用、数据库和调度器 ---
 app = Flask(__name__)
