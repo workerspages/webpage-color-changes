@@ -210,10 +210,12 @@ def sync_scheduler_from_db():
         active_targets = MonitorTarget.query.filter_by(is_active=True).all()
         for target in active_targets:
             try:
+                # --- ↓↓↓ 关键修正：将 from_crab 改为 from_crontab ↓↓↓ ---
                 scheduler.add_job(
                     id=f'target_{target.id}', func=execute_target_check, args=[target.id],
-                    trigger=CronTrigger.from_crab(target.cron_schedule, timezone='Asia/Shanghai')
+                    trigger=CronTrigger.from_crontab(target.cron_schedule, timezone='Asia/Shanghai')
                 )
+                # --- ↑↑↑ 关键修正：将 from_crab 改为 from_crontab ↑↑↑ ---
                 print(f"[*] 已同步任务: {target.name or target.url} (ID: {target.id}), 调度: '{target.cron_schedule}'")
             except Exception as e: print(f"[!!!] 同步任务失败 for {target.url}: {e}")
         if scheduler.running:
