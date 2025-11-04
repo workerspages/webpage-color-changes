@@ -1,25 +1,19 @@
 #!/bin/sh
 
-# 设置工作目录
+# 设置脚本在遇到错误时立即退出
+set -e
+
+# 切换到应用的工作目录
 cd /app
 
-# 初始化数据库和默认用户
-echo "正在初始化数据库..."
-flask shell <<EOF
-from app import db, User
-from werkzeug.security import generate_password_hash
-db.create_all()
-if not User.query.filter_by(username='admin').first():
-    hashed_password = generate_password_hash('admin', method='pbkdf2:sha256')
-    new_user = User(username='admin', password_hash=hashed_password)
-    db.session.add(new_user)
-    db.session.commit()
-    print("默认管理员 'admin' (密码 'admin') 已创建。请登录后立即修改密码！")
-else:
-    print("数据库已存在。")
-exit()
-EOF
+# 1. 调用在 app.py 中定义的 'init-db' 命令
+#    这个命令会创建数据库表，并根据环境变量创建或更新管理员账户。
+#    这是比使用 'flask shell' 更稳定、更推荐的方式。
+echo "--- 正在初始化数据库和管理员账户 ---"
+flask init-db
 
-# 启动 Gunicorn Web 服务器
-echo "启动 Gunicorn Web 服务器..."
+# 2. 启动 Gunicorn Web 服务器
+#    'exec' 命令会用 gunicorn 进程替换当前的 shell 进程，
+#    这是容器启动命令的最佳实践，有助于正确处理信号（如 docker stop）。
+echo "--- 启动 Gunicorn Web 服务器，监听端口 5000 ---"
 exec gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5000 app:app
