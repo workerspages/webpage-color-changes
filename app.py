@@ -14,7 +14,9 @@ from apscheduler.triggers.cron import CronTrigger
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from PIL import Image, ImageChops
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # --- 1. 初始化应用、数据库和调度器 ---
 app = Flask(__name__)
@@ -40,16 +42,25 @@ class MonitorTarget(db.Model):
     url = db.Column(db.String(1024), nullable=False)
     cron_schedule = db.Column(db.String(100), nullable=False, default='*/5 * * * *')
     is_active = db.Column(db.Boolean, default=True)
+    # 截图参数
     screenshot_width = db.Column(db.Integer, default=1920)
     screenshot_max_height = db.Column(db.Integer, default=15000)
     threshold = db.Column(db.Integer, default=500)
     crop_area = db.Column(db.String(200), default='[]')
+    # 登录功能字段
+    login_method = db.Column(db.String(50), default='none') # 'none', 'cookie', 'credentials'
+    cookies = db.Column(db.Text, nullable=True)
+    login_username = db.Column(db.String(255), nullable=True)
+    login_password = db.Column(db.String(255), nullable=True)
+    username_selector = db.Column(db.String(255), nullable=True)
+    password_selector = db.Column(db.String(255), nullable=True)
+    submit_button_selector = db.Column(db.String(255), nullable=True)
+    # 状态追踪
     last_checked = db.Column(db.DateTime)
     last_changed = db.Column(db.DateTime)
 
     @property
     def screenshot_filename(self):
-        """生成此目标的截图文件名"""
         return f"target_{self.id}.png"
 
 class NotificationSettings(db.Model):
@@ -71,12 +82,12 @@ class User(db.Model):
 
 # --- 3. 辅助函数 ---
 def get_screenshot(driver, url, width, max_height):
-    print(f"[{url}] 正在以 {width}px 宽度访问...")
-    driver.get(url)
+    # 此函数在执行登录操作后被调用，所以 driver 已经是登录状态
+    print(f"[{url}] 正在以 {width}px 宽度截图...")
     total_height = driver.execute_script("return document.body.scrollHeight")
     if total_height > max_height: total_height = max_height
     driver.set_window_size(width, total_height if total_height > 0 else 1080)
-    time.sleep(3)
+    time.sleep(3) # 留出渲染时间
     png = driver.get_screenshot_as_png()
     return Image.open(io.BytesIO(png))
 
@@ -127,13 +138,13 @@ def send_telegram_notification(message, config):
 
 # --- 4. 核心监控与调度逻辑 ---
 def execute_target_check(target_id):
-    """为单个目标执行监控检查"""
+    """为单个目标执行监控检查 (增加了登录方式选择)"""
     with app.app_context():
         target = MonitorTarget.query.get(target_id)
         notifications_config = NotificationSettings.query.first()
         if not target: return
 
-        print(f"--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始检查: {target.url} ---")
+        print(f"--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始检查: {target.name or target.url} ---")
         chrome_options = Options()
         chrome_options.add_argument('--headless')
         chrome_options.add_argument('--disable-gpu')
@@ -142,6 +153,31 @@ def execute_target_check(target_id):
         chrome_options.add_argument(f'--window-size={target.screenshot_width},1080')
         driver = webdriver.Chrome(options=chrome_options)
         try:
+            driver.get(target.url)
+            
+            if target.login_method == 'cookie' and target.cookies:
+                print("[*] 正在使用 Cookie 方式登录...")
+                try:
+                    cookies = json.loads(target.cookies)
+                    for cookie in cookies:
+                        if 'expiry' in cookie: cookie['expiry'] = int(cookie['expiry'])
+                        driver.add_cookie(cookie)
+                    print(f"[*] 成功加载 {len(cookies)} 个 Cookies。正在刷新页面...")
+                    driver.get(target.url)
+                except Exception as e: print(f"[!!!] 加载 Cookies 失败: {e}")
+
+            elif target.login_method == 'credentials' and all([target.login_username, target.login_password, target.username_selector, target.password_selector, target.submit_button_selector]):
+                print("[*] 正在使用 账号密码 方式登录...")
+                try:
+                    wait = WebDriverWait(driver, 10)
+                    user_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, target.username_selector)))
+                    user_field.send_keys(target.login_username)
+                    driver.find_element(By.CSS_SELECTOR, target.password_selector).send_keys(target.login_password)
+                    driver.find_element(By.CSS_SELECTOR, target.submit_button_selector).click()
+                    print("[*] 已提交登录表单，等待 5 秒让页面跳转...")
+                    time.sleep(5)
+                except Exception as e: print(f"[!!!] 账号密码登录失败: {e}")
+
             current_img = get_screenshot(driver, target.url, target.screenshot_width, target.screenshot_max_height)
             screenshot_path = os.path.join(SCREENSHOT_DIR, target.screenshot_filename)
             
@@ -164,10 +200,8 @@ def execute_target_check(target_id):
                     if notifications_config:
                         send_email(subject, content, notifications_config)
                         send_telegram_notification(tg_message, notifications_config)
-                else:
-                    print(f"[-] 页面无变化: {target.url}")
-            else:
-                print(f"[*] 首次截图，保存基准: {target.url}")
+                else: print(f"[-] 页面无变化: {target.url}")
+            else: print(f"[*] 首次截图，保存基准: {target.url}")
 
             current_img.save(screenshot_path)
             target.last_checked = datetime.now()
@@ -178,10 +212,8 @@ def execute_target_check(target_id):
             driver.quit()
 
 def sync_scheduler_from_db():
-    """从数据库同步所有监控任务到调度器"""
     with app.app_context():
-        if scheduler.running:
-            scheduler.remove_all_jobs()
+        if scheduler.running: scheduler.remove_all_jobs()
         active_targets = MonitorTarget.query.filter_by(is_active=True).all()
         for target in active_targets:
             try:
@@ -190,10 +222,8 @@ def sync_scheduler_from_db():
                     trigger=CronTrigger.from_crontab(target.cron_schedule, timezone='Asia/Shanghai')
                 )
                 print(f"[*] 已添加任务: {target.name or target.url} (ID: {target.id}), 调度: '{target.cron_schedule}'")
-            except Exception as e:
-                print(f"[!!!] 添加任务失败 for {target.url}: {e}")
-        if not scheduler.running and active_targets:
-            scheduler.start()
+            except Exception as e: print(f"[!!!] 添加任务失败 for {target.url}: {e}")
+        if not scheduler.running and active_targets: scheduler.start()
 
 
 # --- 5. Web 路由 ---
@@ -234,6 +264,13 @@ def add_target():
         screenshot_max_height=int(request.form.get('screenshot_max_height', 15000)),
         threshold=int(request.form.get('threshold', 500)),
         crop_area=request.form.get('crop_area', '[]'),
+        login_method=request.form.get('login_method'),
+        cookies=request.form.get('cookies'),
+        login_username=request.form.get('login_username'),
+        login_password=request.form.get('login_password'),
+        username_selector=request.form.get('username_selector'),
+        password_selector=request.form.get('password_selector'),
+        submit_button_selector=request.form.get('submit_button_selector'),
         is_active=request.form.get('is_active') == 'on'
     )
     db.session.add(new_target)
@@ -245,8 +282,7 @@ def add_target():
 @app.route('/target/edit', methods=['POST'])
 def edit_target():
     if 'user_id' not in session: return redirect(url_for('login'))
-    target_id = request.form.get('target_id')
-    target = MonitorTarget.query.get_or_404(target_id)
+    target = MonitorTarget.query.get_or_404(request.form.get('target_id'))
     target.name = request.form.get('name')
     target.url = request.form.get('url')
     target.cron_schedule = request.form.get('cron_schedule')
@@ -254,6 +290,13 @@ def edit_target():
     target.screenshot_max_height = int(request.form.get('screenshot_max_height'))
     target.threshold = int(request.form.get('threshold'))
     target.crop_area = request.form.get('crop_area')
+    target.login_method = request.form.get('login_method')
+    target.cookies = request.form.get('cookies')
+    target.login_username = request.form.get('login_username')
+    target.login_password = request.form.get('login_password')
+    target.username_selector = request.form.get('username_selector')
+    target.password_selector = request.form.get('password_selector')
+    target.submit_button_selector = request.form.get('submit_button_selector')
     target.is_active = request.form.get('is_active') == 'on'
     db.session.commit()
     sync_scheduler_from_db()
@@ -281,15 +324,9 @@ def toggle_target(target_id):
 
 @app.route('/target/execute/<int:target_id>', methods=['POST'])
 def execute_manual_check(target_id):
-    """手动触发一次监控检查"""
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
+    if 'user_id' not in session: return redirect(url_for('login'))
     target = MonitorTarget.query.get_or_404(target_id)
-    
-    # 直接调用核心检查函数
     execute_target_check(target.id)
-    
     flash(f"已手动为 '{target.name or target.url}' 触发了一次监控检查。", 'success')
     return redirect(url_for('dashboard'))
 
@@ -332,9 +369,7 @@ def init_db():
 
 with app.app_context():
     db.create_all()
-    # 确保至少有一个通知设置行存在
     if not NotificationSettings.query.first():
         db.session.add(NotificationSettings())
         db.session.commit()
-    # 启动时同步一次调度器
     sync_scheduler_from_db()
