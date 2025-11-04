@@ -6,6 +6,7 @@ import io
 import json
 import time
 from datetime import datetime
+import traceback
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -132,21 +133,32 @@ def send_telegram_notification(message, config):
 
 # --- 4. 核心监控与调度逻辑 ---
 def execute_target_check(target_id):
+    print(f"\n[DEBUG] execute_target_check 函数被调用, 目标ID: {target_id}")
     with app.app_context():
         target = MonitorTarget.query.get(target_id)
         notifications_config = NotificationSettings.query.first()
-        if not target: return
+        if not target: 
+            print(f"[DEBUG] 目标ID {target_id} 在数据库中未找到，任务终止。")
+            return
 
         print(f"--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始检查: {target.name or target.url} ---")
-        chrome_options = Options()
-        chrome_options.add_argument('--headless')
-        chrome_options.add_argument('--disable-gpu')
-        chrome_options.add_argument('--no-sandbox')
-        chrome_options.add_argument('--disable-dev-shm-usage')
-        chrome_options.add_argument(f'--window-size={target.screenshot_width},1080')
-        driver = webdriver.Chrome(options=chrome_options)
+        driver = None
         try:
+            print("[DEBUG] 准备配置 Chrome Options...")
+            chrome_options = Options()
+            chrome_options.add_argument('--headless')
+            chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--no-sandbox')
+            chrome_options.add_argument('--disable-dev-shm-usage')
+            chrome_options.add_argument(f'--window-size={target.screenshot_width},1080')
+            print("[DEBUG] Chrome Options 配置完成。")
+            
+            print("[DEBUG] 正在初始化 webdriver.Chrome...")
+            driver = webdriver.Chrome(options=chrome_options)
+            print("[DEBUG] webdriver.Chrome 初始化成功！")
+            
             driver.get(target.url)
+            print(f"[DEBUG] 已访问初始 URL: {target.url}")
             
             if target.login_method == 'cookie' and target.cookies:
                 print("[*] 正在使用 Cookie 方式登录...")
@@ -200,9 +212,17 @@ def execute_target_check(target_id):
             target.last_checked = datetime.now()
             db.session.commit()
         except Exception as e:
-            print(f"[!!!] 处理 {target.url} 时发生严重异常: {e}")
+            print(f"[!!!] 处理 {target.url} 时发生严重异常!")
+            print("详细错误信息如下:")
+            traceback.print_exc()
         finally:
-            driver.quit()
+            if driver:
+                print("[DEBUG] 正在关闭 webdriver...")
+                driver.quit()
+                print("[DEBUG] webdriver 已关闭。")
+            else:
+                print("[DEBUG] driver 未成功初始化，无需关闭。")
+        print(f"--- 检查结束: {target.name or target.url} ---\n")
 
 def sync_scheduler_from_db():
     with app.app_context():
@@ -210,12 +230,10 @@ def sync_scheduler_from_db():
         active_targets = MonitorTarget.query.filter_by(is_active=True).all()
         for target in active_targets:
             try:
-                # --- ↓↓↓ 关键修正：将 from_crab 改为 from_crontab ↓↓↓ ---
                 scheduler.add_job(
                     id=f'target_{target.id}', func=execute_target_check, args=[target.id],
                     trigger=CronTrigger.from_crontab(target.cron_schedule, timezone='Asia/Shanghai')
                 )
-                # --- ↑↑↑ 关键修正：将 from_crab 改为 from_crontab ↑↑↑ ---
                 print(f"[*] 已同步任务: {target.name or target.url} (ID: {target.id}), 调度: '{target.cron_schedule}'")
             except Exception as e: print(f"[!!!] 同步任务失败 for {target.url}: {e}")
         if scheduler.running:
@@ -342,35 +360,3 @@ def save_notifications():
     db.session.add(settings)
     db.session.commit()
     flash('通知设置已成功保存！', 'success')
-    return redirect(url_for('dashboard'))
-
-
-# --- 6. 启动与初始化 ---
-@app.cli.command("init-db")
-def init_db():
-    """初始化数据库并创建管理员"""
-    db.create_all()
-    admin_user = os.environ.get('ADMIN_USER', 'admin')
-    admin_pass = os.environ.get('ADMIN_PASSWORD', 'admin')
-    user = User.query.filter_by(username=admin_user).first()
-    if not user:
-        user = User(username=admin_user)
-        db.session.add(user)
-    user.password_hash = generate_password_hash(admin_pass, method='pbkdf2:sha256')
-    if not NotificationSettings.query.first():
-        db.session.add(NotificationSettings())
-    db.session.commit()
-    print(f"数据库初始化完成。管理员 '{admin_user}' 已配置。")
-
-with app.app_context():
-    db.create_all()
-    if not NotificationSettings.query.first():
-        db.session.add(NotificationSettings())
-        db.session.commit()
-    
-    if not scheduler.running:
-        scheduler.start()
-        print("[SCHEDULER] 后台调度器已成功启动。")
-    
-    print("[SCHEDULER] 应用启动，正在从数据库同步所有任务...")
-    sync_scheduler_from_db()
