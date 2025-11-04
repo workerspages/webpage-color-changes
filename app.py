@@ -5,7 +5,6 @@ import subprocess
 import io
 import json
 import time
-from datetime import datetime
 import traceback 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
@@ -18,6 +17,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+# --- ↓↓↓ 关键修正：添加缺失的 Image 和 ImageChops 导入 ↓↓↓ ---
+from PIL import Image, ImageChops
+# --- ↑↑↑ 关键修正：添加缺失的 Image 和 ImageChops 导入 ↑↑↑ ---
 
 # --- 1. 初始化应用、数据库和调度器 ---
 app = Flask(__name__)
@@ -132,7 +134,7 @@ def send_telegram_notification(message, config):
     except Exception as e: print(f"发送 Telegram 通知时发生异常: {e}")
 
 
-# --- 4. 核心监控与调度逻辑 (带有强力调试) ---
+# --- 4. 核心监控与调度逻辑 ---
 def execute_target_check(target_id):
     print(f"\n[DEBUG] execute_target_check 函数被调用, 目标ID: {target_id}")
     with app.app_context():
