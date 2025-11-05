@@ -85,7 +85,6 @@
                                 data-password-selector="{{ target.password_selector }}"
                                 data-submit-button-selector="{{ target.submit_button_selector }}"
                                 data-active="{{ 'on' if target.is_active else 'off' }}"
-                                <!-- 新增：传递图片URL给编辑按钮 -->
                                 data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) if target.last_checked else '' }}">
                             编辑
                         </button>
