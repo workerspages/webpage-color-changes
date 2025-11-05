@@ -14,13 +14,17 @@
     }
     #crop-instructions {
         z-index: 2;
-        pointer-events: none; /* 防止文字标签捕获鼠标事件 */
+        pointer-events: none;
     }
     #crop-canvas {
         position: absolute;
         top: 0;
         left: 0;
-        z-index: 3; /* 确保画布在最顶层 */
+        /* --- ↓↓↓ THE FINAL FIX IS HERE ↓↓↓ --- */
+        width: 100%;
+        height: 100%;
+        /* --- ↑↑↑ THE FINAL FIX IS HERE ↑↑↑ --- */
+        z-index: 3;
         cursor: crosshair;
     }
 </style>
@@ -193,7 +197,7 @@
   </div>
 </div>
 
-<!-- 通知设置的模态框 -->
+<!-- 通知设置的模态框 (完整代码) -->
 <div class="modal fade" id="notificationSettingsModal" tabindex="-1" aria-labelledby="notificationModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -245,7 +249,7 @@
     </div>
 </div>
 
-<!-- 图片预览模态框 -->
+<!-- 图片预览模态框 (完整代码) -->
 <div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
