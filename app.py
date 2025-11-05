@@ -7,7 +7,7 @@ import json
 import time
 import traceback 
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -18,8 +18,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from PIL import Image, ImageChops, ImageDraw
-# --- [FINAL UPGRADE] 导入 imagehash ---
+from PIL import Image, ImageDraw
 import imagehash
 
 
@@ -49,7 +48,6 @@ class MonitorTarget(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     screenshot_width = db.Column(db.Integer, default=1920)
     screenshot_max_height = db.Column(db.Integer, default=15000)
-    # --- [FINAL UPGRADE] 阈值现在是汉明距离，整数类型 ---
     threshold = db.Column(db.Integer, default=5)
     crop_area = db.Column(db.String(200), default='[]')
     login_method = db.Column(db.String(50), default='none')
@@ -92,23 +90,13 @@ def get_screenshot(driver, url, width, max_height):
     print("[DEBUG][get_screenshot] 截图成功。")
     return Image.open(io.BytesIO(png))
 
-# --- [FINAL UPGRADE] 使用感知哈希重写对比函数 ---
 def images_are_different(img1, img2, hamming_distance_threshold):
-    """
-    通过计算两张图片的感知哈希指纹的汉明距离来判断它们是否在视觉上不同。
-    """
-    # 计算两张图片的哈希值。dhash (difference hash) 是一种快速且有效的算法。
     hash1 = imagehash.dhash(img1)
     hash2 = imagehash.dhash(img2)
-    
-    # 计算两个哈希值之间的汉明距离
     distance = hash1 - hash2
-    
     print(f"[DEBUG] 图片1哈希: {hash1}")
     print(f"[DEBUG] 图片2哈希: {hash2}")
     print(f"[DEBUG] 计算出的汉明距离: {distance}")
-    
-    # 如果距离大于设定的阈值，则认为图片有显著不同
     return distance > hamming_distance_threshold
 
 def send_email(subject, content, config):
@@ -181,7 +169,6 @@ def execute_target_check(target_id):
             print(f"[DEBUG] 已访问初始 URL: {target.url}")
             
             if target.login_method == 'cookie' and target.cookies:
-                print("[DEBUG] 检测到登录方式: Cookie")
                 try:
                     cookies = json.loads(target.cookies)
                     for cookie in cookies:
@@ -192,7 +179,6 @@ def execute_target_check(target_id):
                 except Exception as e: print(f"[!!!] 加载 Cookies 失败: {e}")
 
             elif target.login_method == 'credentials' and all([target.login_username, target.login_password, target.username_selector, target.password_selector, target.submit_button_selector]):
-                print("[DEBUG] 检测到登录方式: 账号密码")
                 try:
                     wait = WebDriverWait(driver, 10)
                     user_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, target.username_selector)))
@@ -232,28 +218,18 @@ def execute_target_check(target_id):
                 else: print(f"[-] 页面无变化: {target.url}")
             else: print(f"[*] 首次截图，保存基准: {target.url}")
 
-            try:
-                crop_box_to_draw = json.loads(target.crop_area)
-                if isinstance(crop_box_to_draw, list) and len(crop_box_to_draw) == 4:
-                    draw = ImageDraw.Draw(current_img)
-                    draw.rectangle(crop_box_to_draw, outline="red", width=5)
-                    print(f"[DEBUG] 已在快照上绘制监控区域标记: {crop_box_to_draw}")
-            except (json.JSONDecodeError, TypeError, ValueError):
-                pass
-
             current_img.save(screenshot_path)
-            print(f"[DEBUG] 新快照已保存至: {screenshot_path}")
+            print(f"[DEBUG] 纯净快照已保存至: {screenshot_path}")
+            
             target.last_checked = datetime.now()
             db.session.commit()
         except Exception as e:
             print(f"[!!!] 处理 {target.url} 时发生严重异常!")
-            print("详细错误信息如下:")
             traceback.print_exc()
         finally:
             if driver:
                 print("[DEBUG] 正在关闭 webdriver...")
                 driver.quit()
-                print("[DEBUG] webdriver 已关闭。")
             else:
                 print("[DEBUG] driver 未成功初始化，无需关闭。")
         print(f"--- 检查结束: {target.name or target.url} ---\n")
@@ -291,8 +267,31 @@ def logout():
 
 @app.route('/screenshots/<path:filename>')
 def serve_screenshot(filename):
-    if 'user_id' not in session: return "Unauthorized", 401
-    return send_from_directory(SCREENSHOT_DIR, filename)
+    if 'user_id' not in session: 
+        return "Unauthorized", 401
+    try:
+        target_id_str = filename.replace('target_', '').replace('.png', '')
+        target_id = int(target_id_str)
+        target = MonitorTarget.query.get(target_id)
+        screenshot_path = os.path.join(SCREENSHOT_DIR, filename)
+
+        if not target or not os.path.exists(screenshot_path):
+            return "File not found", 404
+
+        crop_box = json.loads(target.crop_area or '[]')
+        if isinstance(crop_box, list) and len(crop_box) == 4:
+            image = Image.open(screenshot_path)
+            draw = ImageDraw.Draw(image)
+            draw.rectangle(crop_box, outline="red", width=5)
+            img_io = io.BytesIO()
+            image.save(img_io, 'PNG')
+            img_io.seek(0)
+            return send_file(img_io, mimetype='image/png')
+        else:
+            return send_from_directory(SCREENSHOT_DIR, filename)
+    except (ValueError, json.JSONDecodeError, IndexError) as e:
+        print(f"[WARN] 处理截图请求时出错: {e}")
+        return send_from_directory(SCREENSHOT_DIR, filename)
 
 @app.route('/')
 def dashboard():
@@ -400,7 +399,6 @@ def save_notifications():
 # --- 6. 启动与初始化 ---
 @app.cli.command("init-db")
 def init_db():
-    """初始化数据库并创建管理员"""
     db.create_all()
     admin_user = os.environ.get('ADMIN_USER', 'admin')
     admin_pass = os.environ.get('ADMIN_PASSWORD', 'admin')
