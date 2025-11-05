@@ -20,10 +20,8 @@
         position: absolute;
         top: 0;
         left: 0;
-        /* --- ↓↓↓ THE FINAL FIX IS HERE ↓↓↓ --- */
         width: 100%;
         height: 100%;
-        /* --- ↑↑↑ THE FINAL FIX IS HERE ↑↑↑ --- */
         z-index: 3;
         cursor: crosshair;
     }
@@ -197,7 +195,7 @@
   </div>
 </div>
 
-<!-- 通知设置的模态框 (完整代码) -->
+<!-- 通知设置的模态框 -->
 <div class="modal fade" id="notificationSettingsModal" tabindex="-1" aria-labelledby="notificationModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -249,7 +247,7 @@
     </div>
 </div>
 
-<!-- 图片预览模态框 (完整代码) -->
+<!-- 图片预览模态框 -->
 <div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
@@ -378,7 +376,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    const cropModalEl = document.getElementById('cropModal')
+    const cropModalEl = document.getElementById('cropModal');
     const cropModal = new bootstrap.Modal(cropModalEl);
     const cropImage = document.getElementById('crop-image');
     const cropCanvas = document.getElementById('crop-canvas');
@@ -398,17 +396,29 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    cropImage.onload = () => {
-        cropCanvas.width = cropImage.clientWidth;
-        cropCanvas.height = cropImage.clientHeight;
-        
-        scaleX = cropImage.naturalWidth / cropImage.clientWidth;
-        scaleY = cropImage.naturalHeight / cropImage.clientHeight;
-        
-        document.getElementById('crop-instructions').style.display = 'block';
-        coordsDisplay.textContent = '';
-        startX = startY = endX = endY = 0;
-    };
+    cropModalEl.addEventListener('shown.bs.modal', function () {
+        const setupCanvas = () => {
+            if (cropImage.clientWidth > 0) {
+                cropCanvas.width = cropImage.clientWidth;
+                cropCanvas.height = cropImage.clientHeight;
+                scaleX = cropImage.naturalWidth / cropImage.clientWidth;
+                scaleY = cropImage.naturalHeight / cropImage.clientHeight;
+                document.getElementById('crop-instructions').style.display = 'block';
+                coordsDisplay.textContent = '';
+                startX = startY = endX = endY = 0;
+            } else {
+                console.error("Image clientWidth is 0. Cannot setup canvas.");
+                alert("无法初始化选取区域功能，图片尺寸加载失败。");
+                cropModal.hide();
+            }
+        };
+
+        if (cropImage.complete) {
+            setupCanvas();
+        } else {
+            cropImage.onload = setupCanvas;
+        }
+    });
 
     const getMousePos = (canvas, evt) => {
         const rect = canvas.getBoundingClientRect();
@@ -483,26 +493,26 @@ document.addEventListener('DOMContentLoaded', function () {
     cropModalEl.addEventListener('hidden.bs.modal', function () {
         ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
     });
-});
 
-function toggleTarget(element) {
-    var targetId = element.dataset.id;
-    fetch('/target/toggle/' + targetId, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status !== 'success') {
-            alert('状态更新失败: ' + data.message);
+    function toggleTarget(element) {
+        var targetId = element.dataset.id;
+        fetch('/target/toggle/' + targetId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status !== 'success') {
+                alert('状态更新失败: ' + data.message);
+                element.checked = !element.checked;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('网络错误，状态更新失败。');
             element.checked = !element.checked;
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('网络错误，状态更新失败。');
-        element.checked = !element.checked;
-    });
-}
+        });
+    }
+});
 </script>
 {% endblock %}
