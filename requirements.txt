@@ -2,9 +2,10 @@
 requests
 selenium
 Pillow
-# --- 新增依赖 ---
 Flask
 Flask-SQLAlchemy
 APScheduler
 gunicorn
 werkzeug
+# --- [FINAL UPGRADE] 引入感知哈希库 ---
+ImageHash
