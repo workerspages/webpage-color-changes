@@ -4,9 +4,16 @@
 
 {% block content %}
 <style>
-    #cropModal .modal-body {
+    /* --- ↓↓↓ [FINAL FIX] --- */
+    #crop-container {
+        /* 使用 d-inline-block 让容器的尺寸自适应其内部的图片尺寸 */
+        display: inline-block;
+        /* position: relative 是关键，它让内部的 canvas 以此容器为基准定位 */
         position: relative;
+        line-height: 0; /* 消除图片下方的微小间隙 */
     }
+    /* --- ↑↑↑ [FINAL FIX] --- */
+
     #crop-image {
         z-index: 1;
     }
@@ -258,10 +265,15 @@
         <h5 class="modal-title" id="cropModalLabel">选取监控区域</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body text-center">
-          <p id="crop-instructions" class="position-absolute top-50 start-50 translate-middle bg-dark text-white p-3 rounded" style="z-index: 3;">请在图片上按住鼠标左键并拖动以选择区域</p>
-          <img src="" id="crop-image" class="img-fluid" alt="完整快照">
-          <canvas id="crop-canvas"></canvas>
+      <!-- --- ↓↓↓ [FINAL FIX] 使用 p-0 清除内边距，确保容器和图片完美贴合 --- -->
+      <div class="modal-body text-center p-0">
+          <!-- --- ↓↓↓ [FINAL FIX] 新增一个容器来包裹图片和画布 --- -->
+          <div id="crop-container">
+              <p id="crop-instructions" class="position-absolute top-50 start-50 translate-middle bg-dark text-white p-3 rounded" style="z-index: 3;">请在图片上按住鼠标左键并拖动以选择区域</p>
+              <img src="" id="crop-image" class="img-fluid" alt="完整快照">
+              <canvas id="crop-canvas"></canvas>
+          </div>
+          <!-- --- ↑↑↑ [FINAL FIX] --- -->
       </div>
       <div class="modal-footer">
         <span id="coords-display" class="me-auto text-muted"></span>
@@ -275,6 +287,7 @@
 
 {% block scripts %}
 <script>
+// (JavaScript部分和上一版完全一样，无需改动)
 document.addEventListener('DOMContentLoaded', function () {
     var imagePreviewModal = document.getElementById('imagePreviewModal');
     if(imagePreviewModal) {
@@ -370,10 +383,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const coordsDisplay = document.getElementById('coords-display');
     let isDrawing = false;
     let startX, startY, endX, endY;
-    // --- ↓↓↓ [FIX] 声明用于存储缩放比例的变量 ↓↓↓ ---
     let scaleX = 1;
     let scaleY = 1;
-    // --- ↑↑↑ [FIX] ---
 
     document.getElementById('select-area-btn').addEventListener('click', function() {
         if (currentImgUrlForCropper) {
@@ -388,12 +399,8 @@ document.addEventListener('DOMContentLoaded', function () {
         cropCanvas.width = cropImage.clientWidth;
         cropCanvas.height = cropImage.clientHeight;
         
-        // --- ↓↓↓ [FIX] 计算并存储真实的缩放比例 ↓↓↓ ---
-        // naturalWidth/Height 是图片文件的原始尺寸
-        // clientWidth/Height 是图片在浏览器中显示的尺寸
         scaleX = cropImage.naturalWidth / cropImage.clientWidth;
         scaleY = cropImage.naturalHeight / cropImage.clientHeight;
-        // --- ↑↑↑ [FIX] ---
         
         document.getElementById('crop-instructions').style.display = 'block';
         coordsDisplay.textContent = '';
@@ -432,7 +439,6 @@ document.addEventListener('DOMContentLoaded', function () {
         ctx.fillRect(startX, startY, endX - startX, endY - startY);
         ctx.strokeRect(startX, startY, endX - startX, endY - startY);
         
-        // --- ↓↓↓ [FIX] 显示给用户的坐标也应该是最终换算后的大图坐标 ↓↓↓ ---
         const currentCoords = [
             Math.round(Math.min(startX, endX) * scaleX), 
             Math.round(Math.min(startY, endY) * scaleY), 
@@ -440,13 +446,13 @@ document.addEventListener('DOMContentLoaded', function () {
             Math.round(Math.max(startY, endY) * scaleY)
         ];
         coordsDisplay.textContent = `[${currentCoords.join(', ')}]`;
-        // --- ↑↑↑ [FIX] ---
     });
 
     const stopDrawing = (e) => {
         if (!isDrawing) return;
         e.preventDefault();
         isDrawing = false;
+        // 在某些浏览器中，mouseup事件可能不会更新clientX/Y，所以我们重新获取一次
         const pos = getMousePos(cropCanvas, e);
         endX = pos.x;
         endY = pos.y;
@@ -456,18 +462,16 @@ document.addEventListener('DOMContentLoaded', function () {
     cropCanvas.addEventListener('mouseleave', stopDrawing);
 
     document.getElementById('confirm-crop-btn').addEventListener('click', function() {
-        // --- ↓↓↓ [FIX] 在保存时，将显示坐标乘以缩放比例，得到真实坐标 ↓↓↓ ---
         const left = Math.round(Math.min(startX, endX) * scaleX);
         const top = Math.round(Math.min(startY, endY) * scaleY);
         const right = Math.round(Math.max(startX, endX) * scaleX);
         const bottom = Math.round(Math.max(startY, endY) * scaleY);
-        // --- ↑↑↑ [FIX] ---
 
-        if (right - left > 5 && bottom - top > 5) { // 避免过小的误操作
+        if (right - left > 5 && bottom - top > 5) {
             const cropAreaValue = `[${left}, ${top}, ${right}, ${bottom}]`;
             document.getElementById('crop_area').value = cropAreaValue;
         } else {
-            document.getElementById('crop_area').value = ""; // 如果选区太小，则清空
+            document.getElementById('crop_area').value = "";
         }
         
         ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
