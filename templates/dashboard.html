@@ -3,13 +3,36 @@
 {% block title %}仪表盘 - 网页变化监控系统{% endblock %}
 
 {% block content %}
+<!-- --- [FIX] 增加针对裁剪模态框的CSS样式，确保Canvas在最上层 --- -->
+<style>
+    #cropModal .modal-body {
+        /* 确保父元素是定位上下文 */
+        position: relative;
+    }
+    #crop-image {
+        /* 图片作为底层 */
+        z-index: 1;
+    }
+    #crop-canvas {
+        /* Canvas覆盖在图片之上，接收所有鼠标事件 */
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 2;
+        cursor: crosshair; /* 十字光标应该在这里 */
+    }
+</style>
+<!-- --- [FIX] 增加针对裁剪模态框的CSS样式 --- -->
+
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
     <h1 class="h2">监控仪表盘</h1>
     <div class="btn-toolbar mb-2 mb-md-0">
         <button type="button" class="btn btn-sm btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bell" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92L8 1.918zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6z"/></svg>
             通知设置
         </button>
         <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
             添加新目标
         </button>
     </div>
@@ -118,7 +141,6 @@
         </div>
         <div class="modal-body">
             <input type="hidden" id="target_id" name="target_id">
-            <!-- ... 其他表单字段保持不变 ... -->
             <div class="mb-3"><label for="name" class="form-label">监控名称 (可选)</label><input type="text" class="form-control" id="name" name="name" placeholder="例如：苹果官网首页"></div>
             <div class="mb-3"><label for="url" class="form-label">监控网址 (URL)</label><input type="url" class="form-control" id="url" name="url" placeholder="https://www.example.com" required></div>
             <div class="mb-3"><label for="cron_schedule" class="form-label">Cron 调度计划</label><input type="text" class="form-control" id="cron_schedule" name="cron_schedule" value="*/5 * * * *" required><div class="form-text">默认为每5分钟。格式: 分 时 日 月 周。 <a href="https://crontab.guru/" target="_blank">Cron 表达式助手</a></div></div>
@@ -128,7 +150,6 @@
                 <div class="col-md-4 mb-3"><label for="screenshot_max_height" class="form-label">最大高度 (px)</label><input type="number" class="form-control" id="screenshot_max_height" name="screenshot_max_height" value="15000"></div>
                 <div class="col-md-4 mb-3"><label for="threshold" class="form-label">差异阈值</label><input type="number" class="form-control" id="threshold" name="threshold" value="500"></div>
             </div>
-            <!-- --- ↓↓↓ [MODIFICATION] ↓↓↓ --- -->
             <div class="mb-3">
                 <label for="crop_area" class="form-label">指定区域 (JSON)</label>
                 <div class="input-group">
@@ -140,14 +161,12 @@
                 </div>
                 <div class="form-text">留空表示监控整个页面。编辑时，需有快照才能选取区域。</div>
             </div>
-            <!-- --- ↑↑↑ [MODIFICATION] ↑↑↑ --- -->
             <hr>
             <h6 class="mb-3">登录设置</h6>
-            <!-- ... 其他表单字段保持不变 ... -->
             <div class="mb-3"><label for="login_method" class="form-label">登录方式</label><select class="form-select" id="login_method" name="login_method"><option value="none" selected>无 (用于公开页面)</option><option value="cookie">使用 Cookie</option><option value="credentials">使用账号密码</option></select></div>
             <div id="cookie-fields" class="mb-3 d-none"><label for="cookies" class="form-label">登录 Cookies (JSON 格式)</label><textarea class="form-control" id="cookies" name="cookies" rows="4"></textarea><div class="form-text">请参考文档中关于如何获取 Cookies 的说明。</div></div>
             <div id="credentials-fields" class="d-none">
-                 <div class="alert alert-warning small"><b>安全警告</b>: 密码将以明文形式存储，请仅用于不敏感的账户。</div>
+                 <div class="alert alert-warning small"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2" viewBox="0 0 16 16" role="img" aria-label="Warning:"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg><b>安全警告</b>: 密码将以明文形式存储，请仅用于不敏感的账户。</div>
                 <div class="row">
                     <div class="col-md-6 mb-3"><label for="login_username" class="form-label">登录账号</label><input type="text" class="form-control" id="login_username" name="login_username"></div>
                     <div class="col-md-6 mb-3"><label for="login_password" class="form-label">登录密码</label><input type="password" class="form-control" id="login_password" name="login_password"></div>
@@ -169,17 +188,74 @@
   </div>
 </div>
 
-<!-- 通知设置的模态框 (无变化) -->
-<div class="modal fade" id="notificationSettingsModal" tabindex="-1" ...>
-    <!-- ... 内容保持不变 ... -->
+<!-- 通知设置的模态框 -->
+<div class="modal fade" id="notificationSettingsModal" tabindex="-1" aria-labelledby="notificationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form action="{{ url_for('save_notifications') }}" method="post">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="notificationModalLabel">全局通知设置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="accordion" id="notificationAccordion">
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingTelegram">
+                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTelegram" aria-expanded="true" aria-controls="collapseTelegram"><strong>✈️ Telegram 通知</strong></button>
+                            </h2>
+                            <div id="collapseTelegram" class="accordion-collapse collapse show" aria-labelledby="headingTelegram" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body">
+                                    <div class="mb-3"><label for="telegram_bot_token" class="form-label">Bot Token</label><input type="text" class="form-control" id="telegram_bot_token" name="telegram_bot_token" value="{{ notifications.telegram_bot_token if notifications }}"></div>
+                                    <div class="mb-3"><label for="telegram_chat_id" class="form-label">Chat ID</label><input type="text" class="form-control" id="telegram_chat_id" name="telegram_chat_id" value="{{ notifications.telegram_chat_id if notifications }}"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingSmtp">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSmtp" aria-expanded="false" aria-controls="collapseSmtp"><strong>📧 邮件通知 (SMTP)</strong></button>
+                            </h2>
+                            <div id="collapseSmtp" class="accordion-collapse collapse" aria-labelledby="headingSmtp" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body">
+                                    <div class="row">
+                                        <div class="col-md-8 mb-3"><label for="smtp_host" class="form-label">SMTP 主机</label><input type="text" class="form-control" id="smtp_host" name="smtp_host" value="{{ notifications.smtp_host if notifications }}"></div>
+                                        <div class="col-md-4 mb-3"><label for="smtp_port" class="form-label">端口</label><input type="number" class="form-control" id="smtp_port" name="smtp_port" value="{{ notifications.smtp_port if notifications }}"></div>
+                                    </div>
+                                    <div class="mb-3"><label for="smtp_user" class="form-label">用户名</label><input type="text" class="form-control" id="smtp_user" name="smtp_user" value="{{ notifications.smtp_user if notifications }}"></div>
+                                    <div class="mb-3"><label for="smtp_password" class="form-label">密码或授权码</label><input type="password" class="form-control" id="smtp_password" name="smtp_password" value=""><div class="form-text">为安全起见，此处不显示已保存的密码。如需修改，请直接输入新密码。</div></div>
+                                    <div class="row">
+                                        <div class="col-md-6 mb-3"><label for="smtp_from" class="form-label">发件人地址</label><input type="email" class="form-control" id="smtp_from" name="smtp_from" value="{{ notifications.smtp_from if notifications }}"><div class="form-text">可留空，默认为用户名。</div></div>
+                                        <div class="col-md-6 mb-3"><label for="to_email" class="form-label">收件人地址</label><input type="email" class="form-control" id="to_email" name="to_email" value="{{ notifications.to_email if notifications }}"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存通知设置</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
-<!-- 图片预览模态框 (无变化) -->
-<div class="modal fade" id="imagePreviewModal" tabindex="-1" ...>
-    <!-- ... 内容保持不变 ... -->
+<!-- 图片预览模态框 -->
+<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imagePreviewModalLabel">快照预览</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center">
+        <img src="" id="modalImagePreview" class="img-fluid" alt="完整快照">
+      </div>
+    </div>
+  </div>
 </div>
 
-<!-- --- ↓↓↓ [NEW FEATURE] 交互式裁剪区域选择模态框 ↓↓↓ --- -->
+<!-- 交互式裁剪区域选择模态框 -->
 <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
@@ -187,10 +263,10 @@
         <h5 class="modal-title" id="cropModalLabel">选取监控区域</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body text-center p-0 position-relative">
-          <p id="crop-instructions" class="position-absolute top-50 start-50 translate-middle bg-dark text-white p-3 rounded">请在图片上按住鼠标左键并拖动以选择区域</p>
-          <img src="" id="crop-image" class="img-fluid" alt="完整快照" style="cursor: crosshair;">
-          <canvas id="crop-canvas" class="position-absolute top-0 left-0"></canvas>
+      <div class="modal-body text-center">
+          <p id="crop-instructions" class="position-absolute top-50 start-50 translate-middle bg-dark text-white p-3 rounded" style="z-index: 3;">请在图片上按住鼠标左键并拖动以选择区域</p>
+          <img src="" id="crop-image" class="img-fluid" alt="完整快照">
+          <canvas id="crop-canvas"></canvas>
       </div>
       <div class="modal-footer">
         <span id="coords-display" class="me-auto text-muted"></span>
@@ -200,16 +276,23 @@
     </div>
   </div>
 </div>
-<!-- --- ↑↑↑ [NEW FEATURE] 交互式裁剪区域选择模态框 ↑↑↑ --- -->
-
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    // 旧的JS代码保持不变...
     var imagePreviewModal = document.getElementById('imagePreviewModal');
-    // ...
+    if(imagePreviewModal) {
+        imagePreviewModal.addEventListener('show.bs.modal', function (event) {
+            var button = event.relatedTarget;
+            var imageUrl = button.getAttribute('data-img-url');
+            var imageName = button.getAttribute('data-img-name');
+            var modalTitle = imagePreviewModal.querySelector('.modal-title');
+            var modalImage = imagePreviewModal.querySelector('#modalImagePreview');
+            modalTitle.textContent = '快照预览: ' + imageName;
+            modalImage.src = imageUrl + '?t=' + new Date().getTime();
+        });
+    }
 
     var targetModal = document.getElementById('targetModal');
     let currentImgUrlForCropper = '';
@@ -222,17 +305,22 @@ document.addEventListener('DOMContentLoaded', function () {
             var modalTitle = targetModal.querySelector('.modal-title');
             var selectAreaBtn = document.getElementById('select-area-btn');
             
+            form.reset();
+            document.getElementById('login_method').dispatchEvent(new Event('change'));
+            
             if (action === 'add') {
                 modalTitle.textContent = '添加新目标';
                 form.action = "{{ url_for('add_target') }}";
-                form.reset();
-                // 新增时没有图片，禁用选取按钮
+                document.getElementById('is_active').checked = true;
+                document.getElementById('cron_schedule').value = '*/5 * * * *';
+                document.getElementById('screenshot_width').value = 1920;
+                document.getElementById('screenshot_max_height').value = 15000;
+                document.getElementById('threshold').value = 500;
                 selectAreaBtn.disabled = true;
                 currentImgUrlForCropper = '';
             } else if (action === 'edit') {
                 modalTitle.textContent = '编辑监控目标';
                 form.action = "{{ url_for('edit_target') }}";
-                // ... (填充表单的逻辑不变)
                 document.getElementById('target_id').value = button.getAttribute('data-id');
                 document.getElementById('name').value = button.getAttribute('data-name');
                 document.getElementById('url').value = button.getAttribute('data-url');
@@ -241,9 +329,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('screenshot_max_height').value = button.getAttribute('data-height');
                 document.getElementById('threshold').value = button.getAttribute('data-threshold');
                 document.getElementById('crop_area').value = button.getAttribute('data-crop');
-                // ... (其他字段)
+                document.getElementById('cookies').value = button.getAttribute('data-cookies');
+                document.getElementById('login_method').value = button.getAttribute('data-login-method') || 'none';
+                document.getElementById('login_username').value = button.getAttribute('data-login-username');
+                document.getElementById('login_password').value = button.getAttribute('data-login-password');
+                document.getElementById('username_selector').value = button.getAttribute('data-username-selector');
+                document.getElementById('password_selector').value = button.getAttribute('data-password-selector');
+                document.getElementById('submit_button_selector').value = button.getAttribute('data-submit-button-selector');
+                document.getElementById('is_active').checked = (button.getAttribute('data-active') === 'on');
+                document.getElementById('login_method').dispatchEvent(new Event('change'));
                 
-                // 检查是否有图片URL，有则启用按钮
                 currentImgUrlForCropper = button.getAttribute('data-img-url');
                 if (currentImgUrlForCropper) {
                     selectAreaBtn.disabled = false;
@@ -251,12 +346,29 @@ document.addEventListener('DOMContentLoaded', function () {
                     selectAreaBtn.disabled = true;
                 }
             }
-            document.getElementById('login_method').dispatchEvent(new Event('change'));
         });
     }
     
-    // --- ↓↓↓ [NEW FEATURE SCRIPT] 裁剪区域选择的JS逻辑 ↓↓↓ ---
-    const cropModal = new bootstrap.Modal(document.getElementById('cropModal'));
+    var loginMethodSelect = document.getElementById('login_method');
+    if(loginMethodSelect){
+        loginMethodSelect.addEventListener('change', function() {
+            var cookieFields = document.getElementById('cookie-fields');
+            var credentialsFields = document.getElementById('credentials-fields');
+            if (this.value === 'cookie') {
+                cookieFields.classList.remove('d-none');
+                credentialsFields.classList.add('d-none');
+            } else if (this.value === 'credentials') {
+                cookieFields.classList.add('d-none');
+                credentialsFields.classList.remove('d-none');
+            } else {
+                cookieFields.classList.add('d-none');
+                credentialsFields.classList.add('d-none');
+            }
+        });
+    }
+
+    const cropModalEl = document.getElementById('cropModal')
+    const cropModal = new bootstrap.Modal(cropModalEl);
     const cropImage = document.getElementById('crop-image');
     const cropCanvas = document.getElementById('crop-canvas');
     const ctx = cropCanvas.getContext('2d');
@@ -266,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.getElementById('select-area-btn').addEventListener('click', function() {
         if (currentImgUrlForCropper) {
-            cropImage.src = currentImgUrlForCropper + '?t=' + new Date().getTime(); // 加时间戳防止缓存
+            cropImage.src = currentImgUrlForCropper + '?t=' + new Date().getTime();
             cropModal.show();
         } else {
             alert('没有可用的快照用于选择区域。请先至少成功执行一次监控。');
@@ -274,47 +386,65 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     cropImage.onload = () => {
-        // 使canvas和图片尺寸匹配
         cropCanvas.width = cropImage.clientWidth;
         cropCanvas.height = cropImage.clientHeight;
         document.getElementById('crop-instructions').style.display = 'block';
+        coordsDisplay.textContent = '';
+        startX = startY = endX = endY = 0;
     };
 
+    const getMousePos = (canvas, evt) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    }
+
     cropCanvas.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const pos = getMousePos(cropCanvas, e);
         isDrawing = true;
-        startX = e.offsetX;
-        startY = e.offsetY;
+        startX = pos.x;
+        startY = pos.y;
         document.getElementById('crop-instructions').style.display = 'none';
     });
 
     cropCanvas.addEventListener('mousemove', (e) => {
         if (!isDrawing) return;
-        endX = e.offsetX;
-        endY = e.offsetY;
+        e.preventDefault();
+        const pos = getMousePos(cropCanvas, e);
+        endX = pos.x;
+        endY = pos.y;
         
-        // 清除上一帧的矩形并重绘
         ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-        ctx.fillStyle = 'rgba(0, 123, 255, 0.3)'; // 半透明蓝色
-        ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)'; // 深蓝色边框
+        ctx.fillStyle = 'rgba(0, 123, 255, 0.3)';
+        ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
         ctx.lineWidth = 1;
 
         ctx.fillRect(startX, startY, endX - startX, endY - startY);
         ctx.strokeRect(startX, startY, endX - startX, endY - startY);
         
-        coordsDisplay.textContent = `[${Math.min(startX, endX)}, ${Math.min(startY, endY)}, ${Math.max(startX, endX)}, ${Math.max(startY, endY)}]`;
+        const currentCoords = [
+            Math.round(Math.min(startX, endX)), 
+            Math.round(Math.min(startY, endY)), 
+            Math.round(Math.max(startX, endX)), 
+            Math.round(Math.max(startY, endY))
+        ];
+        coordsDisplay.textContent = `[${currentCoords.join(', ')}]`;
     });
 
-    cropCanvas.addEventListener('mouseup', (e) => {
+    const stopDrawing = (e) => {
+        if (!isDrawing) return;
+        e.preventDefault();
         isDrawing = false;
-        endX = e.offsetX;
-        endY = e.offsetY;
-    });
-    
-    cropCanvas.addEventListener('mouseleave', () => {
-        if(isDrawing) { // 如果拖动到画布外松开，也视为结束
-             isDrawing = false;
-        }
-    });
+        const pos = getMousePos(cropCanvas, e);
+        endX = pos.x;
+        endY = pos.y;
+    }
+
+    cropCanvas.addEventListener('mouseup', stopDrawing);
+    cropCanvas.addEventListener('mouseleave', stopDrawing);
 
     document.getElementById('confirm-crop-btn').addEventListener('click', function() {
         const left = Math.round(Math.min(startX, endX));
@@ -322,19 +452,41 @@ document.addEventListener('DOMContentLoaded', function () {
         const right = Math.round(Math.max(startX, endX));
         const bottom = Math.round(Math.max(startY, endY));
 
-        if (right - left > 0 && bottom - top > 0) {
+        if (right - left > 5 && bottom - top > 5) { // 避免过小的误操作
             const cropAreaValue = `[${left}, ${top}, ${right}, ${bottom}]`;
             document.getElementById('crop_area').value = cropAreaValue;
+        } else {
+            document.getElementById('crop_area').value = ""; // 如果选区太小，则清空
         }
         
-        ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height); // 清理画布
+        ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         cropModal.hide();
     });
-    // --- ↑↑↑ [NEW FEATURE SCRIPT] 裁剪区域选择的JS逻辑 ↑↑↑ ---
+    
+    // 隐藏模态框时清理画布
+    cropModalEl.addEventListener('hidden.bs.modal', function () {
+        ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
+    });
 });
 
 function toggleTarget(element) {
-    // ... (此函数保持不变)
+    var targetId = element.dataset.id;
+    fetch('/target/toggle/' + targetId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status !== 'success') {
+            alert('状态更新失败: ' + data.message);
+            element.checked = !element.checked;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('网络错误，状态更新失败。');
+        element.checked = !element.checked;
+    });
 }
 </script>
 {% endblock %}
