@@ -18,9 +18,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-# --- ↓↓↓ [新功能] 导入 ImageDraw 模块用于绘图 ↓↓↓ ---
 from PIL import Image, ImageChops, ImageDraw
-# --- ↑↑↑ [新功能] 导入 ImageDraw 模块用于绘图 ↑↑↑ ---
+# --- [FINAL UPGRADE] 导入 imagehash ---
+import imagehash
 
 
 # --- 1. 初始化应用、数据库和调度器 ---
@@ -40,7 +40,7 @@ db = SQLAlchemy(app)
 scheduler = BackgroundScheduler(daemon=True, timezone='Asia/Shanghai')
 
 
-# --- 2. 数据库模型 (无变化) ---
+# --- 2. 数据库模型 ---
 class MonitorTarget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=True)
@@ -49,7 +49,8 @@ class MonitorTarget(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     screenshot_width = db.Column(db.Integer, default=1920)
     screenshot_max_height = db.Column(db.Integer, default=15000)
-    threshold = db.Column(db.Integer, default=500)
+    # --- [FINAL UPGRADE] 阈值现在是汉明距离，整数类型 ---
+    threshold = db.Column(db.Integer, default=5)
     crop_area = db.Column(db.String(200), default='[]')
     login_method = db.Column(db.String(50), default='none')
     cookies = db.Column(db.Text, nullable=True)
@@ -80,7 +81,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
 
 
-# --- 3. 辅助函数 (无变化) ---
+# --- 3. 辅助函数 ---
 def get_screenshot(driver, url, width, max_height):
     print(f"[DEBUG][get_screenshot] 准备截图，URL: {url}")
     total_height = driver.execute_script("return document.body.scrollHeight")
@@ -91,12 +92,24 @@ def get_screenshot(driver, url, width, max_height):
     print("[DEBUG][get_screenshot] 截图成功。")
     return Image.open(io.BytesIO(png))
 
-def images_are_different(img1, img2, threshold):
-    diff = ImageChops.difference(img1.convert('RGB'), img2.convert('RGB'))
-    if diff.getbbox() is None: return False
-    # --- ↓↓↓ [代码优化] 增加 histogram() 调用以兼容新版 Pillow ↓↓↓ ---
-    return sum(diff.histogram()) > threshold
-    # --- ↑↑↑ [代码优化] 增加 histogram() 调用以兼容新版 Pillow ↑↑↑ ---
+# --- [FINAL UPGRADE] 使用感知哈希重写对比函数 ---
+def images_are_different(img1, img2, hamming_distance_threshold):
+    """
+    通过计算两张图片的感知哈希指纹的汉明距离来判断它们是否在视觉上不同。
+    """
+    # 计算两张图片的哈希值。dhash (difference hash) 是一种快速且有效的算法。
+    hash1 = imagehash.dhash(img1)
+    hash2 = imagehash.dhash(img2)
+    
+    # 计算两个哈希值之间的汉明距离
+    distance = hash1 - hash2
+    
+    print(f"[DEBUG] 图片1哈希: {hash1}")
+    print(f"[DEBUG] 图片2哈希: {hash2}")
+    print(f"[DEBUG] 计算出的汉明距离: {distance}")
+    
+    # 如果距离大于设定的阈值，则认为图片有显著不同
+    return distance > hamming_distance_threshold
 
 def send_email(subject, content, config):
     if not all([config.to_email, config.smtp_host, config.smtp_user, config.smtp_password]):
@@ -138,7 +151,7 @@ def send_telegram_notification(message, config):
     except Exception as e: print(f"发送 Telegram 通知时发生异常: {e}")
 
 
-# --- 4. 核心监控与调度逻辑 (有修改) ---
+# --- 4. 核心监控与调度逻辑 ---
 def execute_target_check(target_id):
     print(f"\n[DEBUG] execute_target_check 函数被调用, 目标ID: {target_id}")
     with app.app_context():
@@ -197,18 +210,15 @@ def execute_target_check(target_id):
                 print("[DEBUG] 发现旧快照，准备进行对比...")
                 last_img = Image.open(screenshot_path)
                 
-                # 创建用于对比的图片副本
                 img_to_compare_current = current_img.copy()
                 img_to_compare_last = last_img.copy()
-
                 try:
                     crop_box = json.loads(target.crop_area)
-                    if isinstance(crop_box, list) and len(crop_box) == 4:
+                    if isinstance(crop_box, list) and len(crop_box) == 4 and crop_box[2] > crop_box[0] and crop_box[3] > crop_box[1]:
                         print(f"[DEBUG] 应用裁剪区域进行对比: {crop_box}")
                         img_to_compare_current = img_to_compare_current.crop(tuple(crop_box))
                         img_to_compare_last = img_to_compare_last.crop(tuple(crop_box))
-                except (json.JSONDecodeError, TypeError, ValueError): 
-                    pass # 如果裁剪区域无效，则对比整张图片
+                except (json.JSONDecodeError, TypeError, ValueError, IndexError): pass
 
                 if images_are_different(img_to_compare_last, img_to_compare_current, target.threshold):
                     print(f"[!!!] 检测到变化: {target.url}")
@@ -219,24 +229,17 @@ def execute_target_check(target_id):
                     if notifications_config:
                         send_email(subject, content, notifications_config)
                         send_telegram_notification(tg_message, notifications_config)
-                else: 
-                    print(f"[-] 页面无变化: {target.url}")
-            else: 
-                print(f"[*] 首次截图，保存基准: {target.url}")
+                else: print(f"[-] 页面无变化: {target.url}")
+            else: print(f"[*] 首次截图，保存基准: {target.url}")
 
-            # --- ↓↓↓ [新功能] 在保存前，检查是否需要在截图上绘制监控区域 ↓↓↓ ---
             try:
                 crop_box_to_draw = json.loads(target.crop_area)
                 if isinstance(crop_box_to_draw, list) and len(crop_box_to_draw) == 4:
-                    # 创建一个绘图对象
                     draw = ImageDraw.Draw(current_img)
-                    # 绘制矩形框，红色边框，宽度为5像素以便看清
                     draw.rectangle(crop_box_to_draw, outline="red", width=5)
                     print(f"[DEBUG] 已在快照上绘制监控区域标记: {crop_box_to_draw}")
             except (json.JSONDecodeError, TypeError, ValueError):
-                # 如果 crop_area 无效或未设置，则静默跳过，不绘制任何内容
                 pass
-            # --- ↑↑↑ [新功能] 在保存前，检查是否需要在截图上绘制监控区域 ↑↑↑ ---
 
             current_img.save(screenshot_path)
             print(f"[DEBUG] 新快照已保存至: {screenshot_path}")
@@ -270,7 +273,7 @@ def sync_scheduler_from_db():
         if scheduler.running:
             print(f"[*] 任务同步完成，当前共有 {len(scheduler.get_jobs())} 个任务在调度中。")
 
-# --- 5. Web 路由 (无变化) ---
+# --- 5. Web 路由 ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -306,7 +309,7 @@ def add_target():
         cron_schedule=request.form.get('cron_schedule', '*/5 * * * *'),
         screenshot_width=int(request.form.get('screenshot_width', 1920)),
         screenshot_max_height=int(request.form.get('screenshot_max_height', 15000)),
-        threshold=int(request.form.get('threshold', 500)),
+        threshold=int(request.form.get('threshold', 5)),
         crop_area=request.form.get('crop_area', '[]'),
         login_method=request.form.get('login_method'),
         cookies=request.form.get('cookies'),
@@ -394,7 +397,7 @@ def save_notifications():
     return redirect(url_for('dashboard'))
 
 
-# --- 6. 启动与初始化 (无变化) ---
+# --- 6. 启动与初始化 ---
 @app.cli.command("init-db")
 def init_db():
     """初始化数据库并创建管理员"""
