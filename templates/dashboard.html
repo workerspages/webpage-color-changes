@@ -4,16 +4,11 @@
 
 {% block content %}
 <style>
-    /* --- ↓↓↓ [FINAL FIX] --- */
     #crop-container {
-        /* 使用 d-inline-block 让容器的尺寸自适应其内部的图片尺寸 */
         display: inline-block;
-        /* position: relative 是关键，它让内部的 canvas 以此容器为基准定位 */
         position: relative;
-        line-height: 0; /* 消除图片下方的微小间隙 */
+        line-height: 0;
     }
-    /* --- ↑↑↑ [FINAL FIX] --- */
-
     #crop-image {
         z-index: 1;
     }
@@ -150,7 +145,12 @@
             <div class="row">
                 <div class="col-md-4 mb-3"><label for="screenshot_width" class="form-label">截图宽度 (px)</label><input type="number" class="form-control" id="screenshot_width" name="screenshot_width" value="1920"></div>
                 <div class="col-md-4 mb-3"><label for="screenshot_max_height" class="form-label">最大高度 (px)</label><input type="number" class="form-control" id="screenshot_max_height" name="screenshot_max_height" value="15000"></div>
-                <div class="col-md-4 mb-3"><label for="threshold" class="form-label">差异阈值</label><input type="number" class="form-control" id="threshold" name="threshold" value="500"></div>
+                <!-- --- [FINAL UPGRADE] 修改为汉明距离阈值 --- -->
+                <div class="col-md-4 mb-3">
+                    <label for="threshold" class="form-label">视觉差异阈值</label>
+                    <input type="number" step="1" class="form-control" id="threshold" name="threshold" value="5">
+                    <div class="form-text">基于汉明距离。0=完全相同, &lt;5=高度相似, &gt;10=显著不同。推荐5-10。</div>
+                </div>
             </div>
             <div class="mb-3">
                 <label for="crop_area" class="form-label">指定区域 (JSON)</label>
@@ -265,15 +265,12 @@
         <h5 class="modal-title" id="cropModalLabel">选取监控区域</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <!-- --- ↓↓↓ [FINAL FIX] 使用 p-0 清除内边距，确保容器和图片完美贴合 --- -->
       <div class="modal-body text-center p-0">
-          <!-- --- ↓↓↓ [FINAL FIX] 新增一个容器来包裹图片和画布 --- -->
           <div id="crop-container">
               <p id="crop-instructions" class="position-absolute top-50 start-50 translate-middle bg-dark text-white p-3 rounded" style="z-index: 3;">请在图片上按住鼠标左键并拖动以选择区域</p>
               <img src="" id="crop-image" class="img-fluid" alt="完整快照">
               <canvas id="crop-canvas"></canvas>
           </div>
-          <!-- --- ↑↑↑ [FINAL FIX] --- -->
       </div>
       <div class="modal-footer">
         <span id="coords-display" class="me-auto text-muted"></span>
@@ -287,7 +284,6 @@
 
 {% block scripts %}
 <script>
-// (JavaScript部分和上一版完全一样，无需改动)
 document.addEventListener('DOMContentLoaded', function () {
     var imagePreviewModal = document.getElementById('imagePreviewModal');
     if(imagePreviewModal) {
@@ -323,7 +319,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('cron_schedule').value = '*/5 * * * *';
                 document.getElementById('screenshot_width').value = 1920;
                 document.getElementById('screenshot_max_height').value = 15000;
-                document.getElementById('threshold').value = 500;
+                document.getElementById('threshold').value = 5;
                 selectAreaBtn.disabled = true;
                 currentImgUrlForCropper = '';
             } else if (action === 'edit') {
@@ -452,7 +448,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!isDrawing) return;
         e.preventDefault();
         isDrawing = false;
-        // 在某些浏览器中，mouseup事件可能不会更新clientX/Y，所以我们重新获取一次
         const pos = getMousePos(cropCanvas, e);
         endX = pos.x;
         endY = pos.y;
