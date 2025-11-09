@@ -79,7 +79,6 @@
                     <small><a href="{{ target.url }}" target="_blank" title="{{ target.url }}">{{ target.url[:50] }}{% if target.url|length > 50 %}...{% endif %}</a></small>
                 </td>
                 <td>
-                    <!-- [MODIFIED] 动态显示调度信息 -->
                     {% if target.schedule_type == 'interval' %}
                         每 {{ target.interval_minutes }} 分钟
                     {% elif target.schedule_type == 'cron' %}
@@ -107,11 +106,9 @@
                                 data-id="{{ target.id }}"
                                 data-name="{{ target.name }}"
                                 data-url="{{ target.url }}"
-                                <!-- [MODIFIED] 添加新的调度数据属性 -->
                                 data-schedule-type="{{ target.schedule_type }}"
                                 data-interval-minutes="{{ target.interval_minutes }}"
                                 data-cron="{{ target.cron_schedule }}"
-                                <!-- [END MODIFIED] -->
                                 data-width="{{ target.screenshot_width }}"
                                 data-height="{{ target.screenshot_max_height }}"
                                 data-threshold="{{ target.threshold }}"
@@ -160,7 +157,6 @@
             <div class="mb-3"><label for="name" class="form-label">监控名称 (可选)</label><input type="text" class="form-control" id="name" name="name" placeholder="例如：苹果官网首页"></div>
             <div class="mb-3"><label for="url" class="form-label">监控网址 (URL)</label><input type="url" class="form-control" id="url" name="url" placeholder="https://www.example.com" required></div>
             
-            <!-- [MODIFIED] 新的调度方式输入区域 -->
             <div class="mb-3">
                 <label for="schedule_type" class="form-label">调度方式</label>
                 <select class="form-select" id="schedule_type" name="schedule_type">
@@ -189,7 +185,6 @@
                     <div class="form-text">格式: 分 时 日 月 周。 <a href="https://crontab.guru/" target="_blank">Cron 表达式助手</a></div>
                 </div>
             </div>
-            <!-- [END MODIFIED] -->
 
             <hr>
             <div class="row">
@@ -239,7 +234,7 @@
   </div>
 </div>
 
-<!-- 通知设置的模态框 (无变化) -->
+<!-- 通知设置的模态框 -->
 <div class="modal fade" id="notificationSettingsModal" tabindex="-1" aria-labelledby="notificationModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -291,7 +286,7 @@
     </div>
 </div>
 
-<!-- 图片预览模态框 (无变化) -->
+<!-- 图片预览模态框 -->
 <div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
@@ -306,7 +301,7 @@
   </div>
 </div>
 
-<!-- 交互式裁剪区域选择模态框 (无变化) -->
+<!-- 交互式裁剪区域选择模态框 -->
 <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
@@ -365,12 +360,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 modalTitle.textContent = '添加新目标';
                 form.action = "{{ url_for('add_target') }}";
                 document.getElementById('is_active').checked = true;
-                // [MODIFIED] 设置添加时的默认值
                 document.getElementById('schedule_type').value = 'interval'; 
                 document.getElementById('interval_value').value = 5;
                 document.getElementById('interval_unit').value = 'minutes';
                 document.getElementById('cron_schedule').value = '*/5 * * * *';
-                // [END MODIFIED]
                 document.getElementById('screenshot_width').value = 1920;
                 document.getElementById('screenshot_max_height').value = 15000;
                 document.getElementById('threshold').value = 5;
@@ -395,7 +388,6 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('submit_button_selector').value = button.getAttribute('data-submit-button-selector');
                 document.getElementById('is_active').checked = (button.getAttribute('data-active') === 'on');
 
-                // --- [MODIFIED] 新增的调度表单回填逻辑 ---
                 const scheduleType = button.getAttribute('data-schedule-type') || 'interval';
                 document.getElementById('schedule_type').value = scheduleType;
                 document.getElementById('cron_schedule').value = button.getAttribute('data-cron');
@@ -404,20 +396,19 @@ document.addEventListener('DOMContentLoaded', function () {
                     const intervalMinutes = parseInt(button.getAttribute('data-interval-minutes') || '5', 10);
                     let value = intervalMinutes;
                     let unit = 'minutes';
-                    if (intervalMinutes > 0 && intervalMinutes % 1440 === 0) { // 天
+                    if (intervalMinutes > 0 && intervalMinutes % 1440 === 0) {
                         value = intervalMinutes / 1440;
                         unit = 'days';
-                    } else if (intervalMinutes > 0 && intervalMinutes % 60 === 0) { // 小时
+                    } else if (intervalMinutes > 0 && intervalMinutes % 60 === 0) {
                         value = intervalMinutes / 60;
                         unit = 'hours';
                     }
                     document.getElementById('interval_value').value = value;
                     document.getElementById('interval_unit').value = unit;
                 }
-                // --- [END MODIFIED] ---
 
                 document.getElementById('login_method').dispatchEvent(new Event('change'));
-                document.getElementById('schedule_type').dispatchEvent(new Event('change')); // 触发调度UI更新
+                document.getElementById('schedule_type').dispatchEvent(new Event('change'));
                 
                 currentImgUrlForCropper = button.getAttribute('data-img-url');
                 selectAreaBtn.disabled = !currentImgUrlForCropper;
@@ -443,7 +434,6 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    // --- [NEW] 新增的调度表单切换逻辑 ---
     const scheduleTypeSelect = document.getElementById('schedule_type');
     const intervalFields = document.getElementById('interval-fields');
     const cronFields = document.getElementById('cron-fields');
@@ -457,19 +447,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 cronFields.classList.remove('d-none');
                 cronInput.required = true;
                 intervalInput.required = false;
-            } else { // interval
+            } else {
                 intervalFields.classList.remove('d-none');
                 cronFields.classList.add('d-none');
                 cronInput.required = false;
                 intervalInput.required = true;
             }
         });
-        // 页面加载后立即触发一次，确保初始状态正确
         scheduleTypeSelect.dispatchEvent(new Event('change'));
     }
-    // --- [END NEW] ---
 
-    // --- 裁剪区域相关JS (无变化) ---
     const cropModalEl = document.getElementById('cropModal');
     const cropModal = new bootstrap.Modal(cropModalEl);
     const cropImage = document.getElementById('crop-image');
@@ -589,7 +576,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-// [MODIFIED] 将 toggleTarget 函数移到事件监听器外部，使其成为全局函数
 function toggleTarget(element) {
     var targetId = element.dataset.id;
     fetch('/target/toggle/' + targetId, {
