@@ -12,6 +12,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger # 1. 导入 IntervalTrigger
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -44,7 +45,13 @@ class MonitorTarget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=True)
     url = db.Column(db.String(1024), nullable=False)
-    cron_schedule = db.Column(db.String(100), nullable=False, default='*/5 * * * *')
+    
+    # --- [MODIFIED] 调度字段 ---
+    schedule_type = db.Column(db.String(20), nullable=False, default='interval') # 新增: 'cron' or 'interval'
+    interval_minutes = db.Column(db.Integer, nullable=True, default=5)         # 新增: 间隔分钟数
+    cron_schedule = db.Column(db.String(100), nullable=True)                   # 修改: 允许为空
+    # --- [END MODIFIED] ---
+
     is_active = db.Column(db.Boolean, default=True)
     screenshot_width = db.Column(db.Integer, default=1920)
     screenshot_max_height = db.Column(db.Integer, default=15000)
@@ -234,20 +241,37 @@ def execute_target_check(target_id):
                 print("[DEBUG] driver 未成功初始化，无需关闭。")
         print(f"--- 检查结束: {target.name or target.url} ---\n")
 
+# --- [MODIFIED] 更新调度逻辑 ---
 def sync_scheduler_from_db():
     with app.app_context():
         if scheduler.running: scheduler.remove_all_jobs()
         active_targets = MonitorTarget.query.filter_by(is_active=True).all()
         for target in active_targets:
             try:
-                scheduler.add_job(
-                    id=f'target_{target.id}', func=execute_target_check, args=[target.id],
-                    trigger=CronTrigger.from_crontab(target.cron_schedule, timezone='Asia/Shanghai')
-                )
-                print(f"[*] 已同步任务: {target.name or target.url} (ID: {target.id}), 调度: '{target.cron_schedule}'")
+                job_id = f'target_{target.id}'
+                trigger = None
+                schedule_info = ""
+                
+                if target.schedule_type == 'interval' and target.interval_minutes and target.interval_minutes > 0:
+                    trigger = IntervalTrigger(minutes=target.interval_minutes, timezone='Asia/Shanghai')
+                    schedule_info = f"每 {target.interval_minutes} 分钟"
+                elif target.schedule_type == 'cron' and target.cron_schedule:
+                    trigger = CronTrigger.from_crontab(target.cron_schedule, timezone='Asia/Shanghai')
+                    schedule_info = f"Cron: '{target.cron_schedule}'"
+                
+                if trigger:
+                    scheduler.add_job(
+                        id=job_id, func=execute_target_check, args=[target.id],
+                        trigger=trigger
+                    )
+                    print(f"[*] 已同步任务: {target.name or target.url} (ID: {target.id}), 调度: {schedule_info}")
+                else:
+                     print(f"[!] 任务配置无效，跳过: {target.name or target.url} (ID: {target.id})")
+
             except Exception as e: print(f"[!!!] 同步任务失败 for {target.url}: {e}")
         if scheduler.running:
             print(f"[*] 任务同步完成，当前共有 {len(scheduler.get_jobs())} 个任务在调度中。")
+# --- [END MODIFIED] ---
 
 # --- 5. Web 路由 ---
 @app.route('/login', methods=['GET', 'POST'])
@@ -300,12 +324,33 @@ def dashboard():
     notifications = NotificationSettings.query.first()
     return render_template('dashboard.html', targets=targets, notifications=notifications, now=datetime.now)
 
+# --- [NEW] 辅助函数，处理表单中的调度数据 ---
+def process_schedule_form(form_data, target_obj):
+    target_obj.schedule_type = form_data.get('schedule_type')
+    if target_obj.schedule_type == 'interval':
+        try:
+            value = int(form_data.get('interval_value', 5))
+            unit = form_data.get('interval_unit', 'minutes')
+            if unit == 'hours':
+                target_obj.interval_minutes = value * 60
+            elif unit == 'days':
+                target_obj.interval_minutes = value * 1440
+            else: # minutes
+                target_obj.interval_minutes = value
+            target_obj.cron_schedule = None # 清空无效的 cron 字段
+        except (ValueError, TypeError):
+            target_obj.interval_minutes = 5 # 默认值
+    else: # cron
+        target_obj.cron_schedule = form_data.get('cron_schedule', '*/5 * * * *')
+        target_obj.interval_minutes = None # 清空无效的 interval 字段
+    return target_obj
+# --- [END NEW] ---
+
 @app.route('/target/add', methods=['POST'])
 def add_target():
     if 'user_id' not in session: return redirect(url_for('login'))
     new_target = MonitorTarget(
         name=request.form.get('name'), url=request.form.get('url'),
-        cron_schedule=request.form.get('cron_schedule', '*/5 * * * *'),
         screenshot_width=int(request.form.get('screenshot_width', 1920)),
         screenshot_max_height=int(request.form.get('screenshot_max_height', 15000)),
         threshold=int(request.form.get('threshold', 5)),
@@ -319,6 +364,8 @@ def add_target():
         submit_button_selector=request.form.get('submit_button_selector'),
         is_active=request.form.get('is_active') == 'on'
     )
+    # --- [MODIFIED] 使用辅助函数处理调度 ---
+    new_target = process_schedule_form(request.form, new_target)
     db.session.add(new_target)
     db.session.commit()
     sync_scheduler_from_db()
@@ -331,7 +378,6 @@ def edit_target():
     target = MonitorTarget.query.get_or_404(request.form.get('target_id'))
     target.name = request.form.get('name')
     target.url = request.form.get('url')
-    target.cron_schedule = request.form.get('cron_schedule')
     target.screenshot_width = int(request.form.get('screenshot_width'))
     target.screenshot_max_height = int(request.form.get('screenshot_max_height'))
     target.threshold = int(request.form.get('threshold'))
@@ -344,6 +390,8 @@ def edit_target():
     target.password_selector = request.form.get('password_selector')
     target.submit_button_selector = request.form.get('submit_button_selector')
     target.is_active = request.form.get('is_active') == 'on'
+    # --- [MODIFIED] 使用辅助函数处理调度 ---
+    target = process_schedule_form(request.form, target)
     db.session.commit()
     sync_scheduler_from_db()
     flash('监控目标已成功更新！', 'success')
