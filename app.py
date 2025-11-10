@@ -7,6 +7,7 @@ import json
 import time
 import traceback 
 from datetime import datetime
+from urllib.parse import urlsplit # 导入 urlsplit 用于更可靠地解析 Bark URL
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -143,40 +144,24 @@ def send_telegram_notification(message, config):
         else: print(f"发送 Telegram 通知失败: {response.status_code} - {response.text}")
     except Exception as e: print(f"发送 Telegram 通知时发生异常: {e}")
 
-# --- [FINAL VERSION] 最终版的 Bark 通知函数，使用 POST 请求，更稳定 ---
 def send_bark_notification(title, content, config):
     if not config.bark_url:
         print("Bark URL 未配置，跳过发送。")
         return
-
-    # 从用户填写的完整 URL 中提取出服务器地址和 Key
-    # 例如：从 "https://api.day.app/YOUR_KEY/" 中提取出 "https://api.day.app" 和 "YOUR_KEY"
     try:
-        # 使用 urlsplit 能够更可靠地处理各种 URL 格式
-        from urllib.parse import urlsplit
         parts = urlsplit(config.bark_url)
         base_url = f"{parts.scheme}://{parts.netloc}"
-        # key 通常是路径的第一部分，去掉前后的斜杠
         device_key = parts.path.strip('/')
         if not device_key: raise IndexError
-            
     except (IndexError, AttributeError):
         print(f"发送 Bark 通知失败: 无法从 '{config.bark_url}' 中正确解析出服务器地址和设备 Key。请检查格式是否为 http(s)://server/key/")
         return
         
-    url = f"{base_url}/push" # Bark 的 POST 请求端点是 /push
-    
-    payload = {
-        "title": title,
-        "body": content,
-        "device_key": device_key
-    }
+    url = f"{base_url}/push"
+    payload = {"title": title, "body": content, "device_key": device_key}
     
     try:
-        # 使用 POST 请求并发送 JSON 数据
         response = requests.post(url, json=payload, timeout=10)
-        
-        # 尝试解析返回的JSON，如果不是JSON则直接使用文本
         try:
             response_json = response.json()
             if response.status_code == 200 and response_json.get("code") == 200:
@@ -185,7 +170,6 @@ def send_bark_notification(title, content, config):
                 print(f"发送 Bark 通知失败: {response.status_code} - {response.text}")
         except json.JSONDecodeError:
             print(f"发送 Bark 通知失败: 收到非JSON响应 {response.status_code} - {response.text}")
-            
     except Exception as e:
         print(f"发送 Bark 通知时发生异常: {e}")
 
@@ -194,12 +178,7 @@ def send_pushplus_notification(title, content, config):
         print("PushPlus Token 未配置，跳过发送。")
         return
     url = "http://www.pushplus.plus/send"
-    payload = {
-        "token": config.pushplus_token,
-        "title": title,
-        "content": content.replace('\n', '<br>'), # PushPlus 支持 HTML
-        "template": "html"
-    }
+    payload = {"token": config.pushplus_token, "title": title, "content": content.replace('\n', '<br>'), "template": "html"}
     try:
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200 and response.json().get("code") == 200:
@@ -278,10 +257,14 @@ def execute_target_check(target_id):
 
                 if images_are_different(img_to_compare_last, img_to_compare_current, target.threshold):
                     print(f"[!!!] 检测到变化: {target.url}")
+                    
+                    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     target.last_changed = datetime.now()
+                    
                     subject = f"网页变化提醒: {target.name or target.url}"
-                    content = f"监控目标 '{target.name}' ({target.url}) 检测到页面发生视觉变化。"
-                    tg_message = f"<b>网页变化提醒</b>\n\n<b>目标:</b> {target.name}\n<b>网址:</b> {target.url}\n\n检测到页面有新变化！"
+                    content = f"[{now_str}] 监控目标 '{target.name}' ({target.url}) 检测到页面发生视觉变化。"
+                    tg_message = f"<b>网页变化提醒</b>\n\n<b>目标:</b> {target.name}\n<b>网址:</b> {target.url}\n\n检测到页面有新变化！\n<b>时间:</b> {now_str}"
+                    
                     if notifications_config:
                         send_email(subject, content, notifications_config)
                         send_telegram_notification(tg_message, notifications_config)
@@ -331,7 +314,6 @@ def sync_scheduler_from_db():
                     print(f"[*] 已同步任务: {target.name or target.url} (ID: {target.id}), 调度: {schedule_info}")
                 else:
                      print(f"[!] 任务配置无效，跳过: {target.name or target.url} (ID: {target.id})")
-
             except Exception as e: print(f"[!!!] 同步任务失败 for {target.url}: {e}")
         if scheduler.running:
             print(f"[*] 任务同步完成，当前共有 {len(scheduler.get_jobs())} 个任务在调度中。")
@@ -361,10 +343,8 @@ def serve_screenshot(filename):
         target_id = int(target_id_str)
         target = MonitorTarget.query.get(target_id)
         screenshot_path = os.path.join(SCREENSHOT_DIR, filename)
-
         if not target or not os.path.exists(screenshot_path):
             return "File not found", 404
-
         crop_box = json.loads(target.crop_area or '[]')
         if isinstance(crop_box, list) and len(crop_box) == 4:
             image = Image.open(screenshot_path)
@@ -393,16 +373,13 @@ def process_schedule_form(form_data, target_obj):
         try:
             value = int(form_data.get('interval_value', 5))
             unit = form_data.get('interval_unit', 'minutes')
-            if unit == 'hours':
-                target_obj.interval_minutes = value * 60
-            elif unit == 'days':
-                target_obj.interval_minutes = value * 1440
-            else: # minutes
-                target_obj.interval_minutes = value
+            if unit == 'hours': target_obj.interval_minutes = value * 60
+            elif unit == 'days': target_obj.interval_minutes = value * 1440
+            else: target_obj.interval_minutes = value
             target_obj.cron_schedule = None
         except (ValueError, TypeError):
             target_obj.interval_minutes = 5
-    else: # cron
+    else:
         target_obj.cron_schedule = form_data.get('cron_schedule', '*/5 * * * *')
         target_obj.interval_minutes = None
     return target_obj
@@ -488,7 +465,6 @@ def save_notifications():
     if 'user_id' not in session: return redirect(url_for('login'))
     settings = NotificationSettings.query.first()
     if not settings: settings = NotificationSettings()
-    
     settings.telegram_bot_token = request.form.get('telegram_bot_token')
     settings.telegram_chat_id = request.form.get('telegram_chat_id')
     settings.smtp_host = request.form.get('smtp_host')
@@ -500,7 +476,6 @@ def save_notifications():
     settings.to_email = request.form.get('to_email')
     settings.bark_url = request.form.get('bark_url')
     settings.pushplus_token = request.form.get('pushplus_token')
-
     db.session.add(settings)
     db.session.commit()
     flash('通知设置已成功保存！', 'success')
@@ -524,7 +499,7 @@ def init_db():
     print(f"数据库初始化完成。管理员 '{admin_user}' 已配置。")
 
 with app.app_context():
-    db.create_all() # 每次启动都确保表已创建
+    db.create_all()
     if not NotificationSettings.query.first():
         db.session.add(NotificationSettings())
         db.session.commit()
