@@ -75,10 +75,8 @@ class NotificationSettings(db.Model):
     smtp_password = db.Column(db.String(200), default='')
     smtp_from = db.Column(db.String(200), default='')
     to_email = db.Column(db.String(200), default='')
-    # --- [NEW] 新增 Bark 和 PushPlus 字段 ---
     bark_url = db.Column(db.String(500), default='')
     pushplus_token = db.Column(db.String(200), default='')
-    # --- [END NEW] ---
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -145,19 +143,51 @@ def send_telegram_notification(message, config):
         else: print(f"发送 Telegram 通知失败: {response.status_code} - {response.text}")
     except Exception as e: print(f"发送 Telegram 通知时发生异常: {e}")
 
-# --- [NEW] 新增 Bark 和 PushPlus 通知函数 ---
+# --- [FINAL VERSION] 最终版的 Bark 通知函数，使用 POST 请求，更稳定 ---
 def send_bark_notification(title, content, config):
     if not config.bark_url:
         print("Bark URL 未配置，跳过发送。")
         return
-    # Bark URL 通常是 https://api.day.app/YOUR_KEY/
-    # 我们需要将 title 和 content 拼接到 URL 后面
-    url = f"{config.bark_url.rstrip('/')}/{requests.utils.quote(title)}/{requests.utils.quote(content)}"
+
+    # 从用户填写的完整 URL 中提取出服务器地址和 Key
+    # 例如：从 "https://api.day.app/YOUR_KEY/" 中提取出 "https://api.day.app" 和 "YOUR_KEY"
     try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200: print("Bark 通知发送成功。")
-        else: print(f"发送 Bark 通知失败: {response.status_code} - {response.text}")
-    except Exception as e: print(f"发送 Bark 通知时发生异常: {e}")
+        # 使用 urlsplit 能够更可靠地处理各种 URL 格式
+        from urllib.parse import urlsplit
+        parts = urlsplit(config.bark_url)
+        base_url = f"{parts.scheme}://{parts.netloc}"
+        # key 通常是路径的第一部分，去掉前后的斜杠
+        device_key = parts.path.strip('/')
+        if not device_key: raise IndexError
+            
+    except (IndexError, AttributeError):
+        print(f"发送 Bark 通知失败: 无法从 '{config.bark_url}' 中正确解析出服务器地址和设备 Key。请检查格式是否为 http(s)://server/key/")
+        return
+        
+    url = f"{base_url}/push" # Bark 的 POST 请求端点是 /push
+    
+    payload = {
+        "title": title,
+        "body": content,
+        "device_key": device_key
+    }
+    
+    try:
+        # 使用 POST 请求并发送 JSON 数据
+        response = requests.post(url, json=payload, timeout=10)
+        
+        # 尝试解析返回的JSON，如果不是JSON则直接使用文本
+        try:
+            response_json = response.json()
+            if response.status_code == 200 and response_json.get("code") == 200:
+                print("Bark 通知发送成功。")
+            else:
+                print(f"发送 Bark 通知失败: {response.status_code} - {response.text}")
+        except json.JSONDecodeError:
+            print(f"发送 Bark 通知失败: 收到非JSON响应 {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        print(f"发送 Bark 通知时发生异常: {e}")
 
 def send_pushplus_notification(title, content, config):
     if not config.pushplus_token:
@@ -177,7 +207,7 @@ def send_pushplus_notification(title, content, config):
         else:
             print(f"发送 PushPlus 通知失败: {response.text}")
     except Exception as e: print(f"发送 PushPlus 通知时发生异常: {e}")
-# --- [END NEW] ---
+
 
 # --- 4. 核心监控与调度逻辑 ---
 def execute_target_check(target_id):
@@ -253,12 +283,10 @@ def execute_target_check(target_id):
                     content = f"监控目标 '{target.name}' ({target.url}) 检测到页面发生视觉变化。"
                     tg_message = f"<b>网页变化提醒</b>\n\n<b>目标:</b> {target.name}\n<b>网址:</b> {target.url}\n\n检测到页面有新变化！"
                     if notifications_config:
-                        # --- [MODIFIED] 调用所有通知函数 ---
                         send_email(subject, content, notifications_config)
                         send_telegram_notification(tg_message, notifications_config)
                         send_bark_notification(subject, content, notifications_config)
                         send_pushplus_notification(subject, content, notifications_config)
-                        # --- [END MODIFIED] ---
                 else: print(f"[-] 页面无变化: {target.url}")
             else: print(f"[*] 首次截图，保存基准: {target.url}")
 
@@ -461,7 +489,6 @@ def save_notifications():
     settings = NotificationSettings.query.first()
     if not settings: settings = NotificationSettings()
     
-    # Telegram & SMTP
     settings.telegram_bot_token = request.form.get('telegram_bot_token')
     settings.telegram_chat_id = request.form.get('telegram_chat_id')
     settings.smtp_host = request.form.get('smtp_host')
@@ -471,11 +498,8 @@ def save_notifications():
         settings.smtp_password = request.form.get('smtp_password')
     settings.smtp_from = request.form.get('smtp_from')
     settings.to_email = request.form.get('to_email')
-    
-    # --- [MODIFIED] 保存 Bark 和 PushPlus 的设置 ---
     settings.bark_url = request.form.get('bark_url')
     settings.pushplus_token = request.form.get('pushplus_token')
-    # --- [END MODIFIED] ---
 
     db.session.add(settings)
     db.session.commit()
@@ -511,3 +535,7 @@ with app.app_context():
     
     print("[SCHEDULER] 应用启动，正在从数据库同步所有任务...")
     sync_scheduler_from_db()
+
+if __name__ == '__main__':
+    # 注意：直接运行此文件仅用于本地开发调试，生产环境请使用 Gunicorn
+    app.run(host='0.0.0.0', port=5000, debug=True)
