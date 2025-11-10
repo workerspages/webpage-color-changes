@@ -12,7 +12,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger # 1. 导入 IntervalTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -45,13 +45,9 @@ class MonitorTarget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=True)
     url = db.Column(db.String(1024), nullable=False)
-    
-    # --- [MODIFIED] 调度字段 ---
-    schedule_type = db.Column(db.String(20), nullable=False, default='interval') # 新增: 'cron' or 'interval'
-    interval_minutes = db.Column(db.Integer, nullable=True, default=5)         # 新增: 间隔分钟数
-    cron_schedule = db.Column(db.String(100), nullable=True)                   # 修改: 允许为空
-    # --- [END MODIFIED] ---
-
+    schedule_type = db.Column(db.String(20), nullable=False, default='interval')
+    interval_minutes = db.Column(db.Integer, nullable=True, default=5)
+    cron_schedule = db.Column(db.String(100), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
     screenshot_width = db.Column(db.Integer, default=1920)
     screenshot_max_height = db.Column(db.Integer, default=15000)
@@ -79,6 +75,10 @@ class NotificationSettings(db.Model):
     smtp_password = db.Column(db.String(200), default='')
     smtp_from = db.Column(db.String(200), default='')
     to_email = db.Column(db.String(200), default='')
+    # --- [NEW] 新增 Bark 和 PushPlus 字段 ---
+    bark_url = db.Column(db.String(500), default='')
+    pushplus_token = db.Column(db.String(200), default='')
+    # --- [END NEW] ---
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -145,6 +145,39 @@ def send_telegram_notification(message, config):
         else: print(f"发送 Telegram 通知失败: {response.status_code} - {response.text}")
     except Exception as e: print(f"发送 Telegram 通知时发生异常: {e}")
 
+# --- [NEW] 新增 Bark 和 PushPlus 通知函数 ---
+def send_bark_notification(title, content, config):
+    if not config.bark_url:
+        print("Bark URL 未配置，跳过发送。")
+        return
+    # Bark URL 通常是 https://api.day.app/YOUR_KEY/
+    # 我们需要将 title 和 content 拼接到 URL 后面
+    url = f"{config.bark_url.rstrip('/')}/{requests.utils.quote(title)}/{requests.utils.quote(content)}"
+    try:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200: print("Bark 通知发送成功。")
+        else: print(f"发送 Bark 通知失败: {response.status_code} - {response.text}")
+    except Exception as e: print(f"发送 Bark 通知时发生异常: {e}")
+
+def send_pushplus_notification(title, content, config):
+    if not config.pushplus_token:
+        print("PushPlus Token 未配置，跳过发送。")
+        return
+    url = "http://www.pushplus.plus/send"
+    payload = {
+        "token": config.pushplus_token,
+        "title": title,
+        "content": content.replace('\n', '<br>'), # PushPlus 支持 HTML
+        "template": "html"
+    }
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code == 200 and response.json().get("code") == 200:
+            print("PushPlus 通知发送成功。")
+        else:
+            print(f"发送 PushPlus 通知失败: {response.text}")
+    except Exception as e: print(f"发送 PushPlus 通知时发生异常: {e}")
+# --- [END NEW] ---
 
 # --- 4. 核心监控与调度逻辑 ---
 def execute_target_check(target_id):
@@ -216,12 +249,16 @@ def execute_target_check(target_id):
                 if images_are_different(img_to_compare_last, img_to_compare_current, target.threshold):
                     print(f"[!!!] 检测到变化: {target.url}")
                     target.last_changed = datetime.now()
-                    subject = f"[网页变化] {target.name or target.url}"
+                    subject = f"网页变化提醒: {target.name or target.url}"
                     content = f"监控目标 '{target.name}' ({target.url}) 检测到页面发生视觉变化。"
                     tg_message = f"<b>网页变化提醒</b>\n\n<b>目标:</b> {target.name}\n<b>网址:</b> {target.url}\n\n检测到页面有新变化！"
                     if notifications_config:
+                        # --- [MODIFIED] 调用所有通知函数 ---
                         send_email(subject, content, notifications_config)
                         send_telegram_notification(tg_message, notifications_config)
+                        send_bark_notification(subject, content, notifications_config)
+                        send_pushplus_notification(subject, content, notifications_config)
+                        # --- [END MODIFIED] ---
                 else: print(f"[-] 页面无变化: {target.url}")
             else: print(f"[*] 首次截图，保存基准: {target.url}")
 
@@ -241,7 +278,6 @@ def execute_target_check(target_id):
                 print("[DEBUG] driver 未成功初始化，无需关闭。")
         print(f"--- 检查结束: {target.name or target.url} ---\n")
 
-# --- [MODIFIED] 更新调度逻辑 ---
 def sync_scheduler_from_db():
     with app.app_context():
         if scheduler.running: scheduler.remove_all_jobs()
@@ -271,7 +307,6 @@ def sync_scheduler_from_db():
             except Exception as e: print(f"[!!!] 同步任务失败 for {target.url}: {e}")
         if scheduler.running:
             print(f"[*] 任务同步完成，当前共有 {len(scheduler.get_jobs())} 个任务在调度中。")
-# --- [END MODIFIED] ---
 
 # --- 5. Web 路由 ---
 @app.route('/login', methods=['GET', 'POST'])
@@ -324,7 +359,6 @@ def dashboard():
     notifications = NotificationSettings.query.first()
     return render_template('dashboard.html', targets=targets, notifications=notifications, now=datetime.now)
 
-# --- [NEW] 辅助函数，处理表单中的调度数据 ---
 def process_schedule_form(form_data, target_obj):
     target_obj.schedule_type = form_data.get('schedule_type')
     if target_obj.schedule_type == 'interval':
@@ -337,14 +371,13 @@ def process_schedule_form(form_data, target_obj):
                 target_obj.interval_minutes = value * 1440
             else: # minutes
                 target_obj.interval_minutes = value
-            target_obj.cron_schedule = None # 清空无效的 cron 字段
+            target_obj.cron_schedule = None
         except (ValueError, TypeError):
-            target_obj.interval_minutes = 5 # 默认值
+            target_obj.interval_minutes = 5
     else: # cron
         target_obj.cron_schedule = form_data.get('cron_schedule', '*/5 * * * *')
-        target_obj.interval_minutes = None # 清空无效的 interval 字段
+        target_obj.interval_minutes = None
     return target_obj
-# --- [END NEW] ---
 
 @app.route('/target/add', methods=['POST'])
 def add_target():
@@ -364,7 +397,6 @@ def add_target():
         submit_button_selector=request.form.get('submit_button_selector'),
         is_active=request.form.get('is_active') == 'on'
     )
-    # --- [MODIFIED] 使用辅助函数处理调度 ---
     new_target = process_schedule_form(request.form, new_target)
     db.session.add(new_target)
     db.session.commit()
@@ -390,7 +422,6 @@ def edit_target():
     target.password_selector = request.form.get('password_selector')
     target.submit_button_selector = request.form.get('submit_button_selector')
     target.is_active = request.form.get('is_active') == 'on'
-    # --- [MODIFIED] 使用辅助函数处理调度 ---
     target = process_schedule_form(request.form, target)
     db.session.commit()
     sync_scheduler_from_db()
@@ -429,6 +460,8 @@ def save_notifications():
     if 'user_id' not in session: return redirect(url_for('login'))
     settings = NotificationSettings.query.first()
     if not settings: settings = NotificationSettings()
+    
+    # Telegram & SMTP
     settings.telegram_bot_token = request.form.get('telegram_bot_token')
     settings.telegram_chat_id = request.form.get('telegram_chat_id')
     settings.smtp_host = request.form.get('smtp_host')
@@ -438,6 +471,12 @@ def save_notifications():
         settings.smtp_password = request.form.get('smtp_password')
     settings.smtp_from = request.form.get('smtp_from')
     settings.to_email = request.form.get('to_email')
+    
+    # --- [MODIFIED] 保存 Bark 和 PushPlus 的设置 ---
+    settings.bark_url = request.form.get('bark_url')
+    settings.pushplus_token = request.form.get('pushplus_token')
+    # --- [END MODIFIED] ---
+
     db.session.add(settings)
     db.session.commit()
     flash('通知设置已成功保存！', 'success')
@@ -461,7 +500,7 @@ def init_db():
     print(f"数据库初始化完成。管理员 '{admin_user}' 已配置。")
 
 with app.app_context():
-    db.create_all()
+    db.create_all() # 每次启动都确保表已创建
     if not NotificationSettings.query.first():
         db.session.add(NotificationSettings())
         db.session.commit()
