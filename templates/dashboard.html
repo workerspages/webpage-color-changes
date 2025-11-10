@@ -245,6 +245,7 @@
                 </div>
                 <div class="modal-body">
                     <div class="accordion" id="notificationAccordion">
+                        <!-- Telegram -->
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="headingTelegram">
                                 <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTelegram" aria-expanded="true" aria-controls="collapseTelegram"><strong>✈️ Telegram 通知</strong></button>
@@ -256,6 +257,7 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- SMTP -->
                         <div class="accordion-item">
                             <h2 class="accordion-header" id="headingSmtp">
                                 <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSmtp" aria-expanded="false" aria-controls="collapseSmtp"><strong>📧 邮件通知 (SMTP)</strong></button>
@@ -271,6 +273,36 @@
                                     <div class="row">
                                         <div class="col-md-6 mb-3"><label for="smtp_from" class="form-label">发件人地址</label><input type="email" class="form-control" id="smtp_from" name="smtp_from" value="{{ notifications.smtp_from if notifications }}"><div class="form-text">可留空，默认为用户名。</div></div>
                                         <div class="col-md-6 mb-3"><label for="to_email" class="form-label">收件人地址</label><input type="email" class="form-control" id="to_email" name="to_email" value="{{ notifications.to_email if notifications }}"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- [NEW] Bark -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingBark">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBark" aria-expanded="false" aria-controls="collapseBark"><strong>🐶 Bark 通知</strong></button>
+                            </h2>
+                            <div id="collapseBark" class="accordion-collapse collapse" aria-labelledby="headingBark" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body">
+                                    <div class="mb-3">
+                                        <label for="bark_url" class="form-label">Bark 推送 URL</label>
+                                        <input type="url" class="form-control" id="bark_url" name="bark_url" value="{{ notifications.bark_url if notifications }}" placeholder="https://api.day.app/YOUR_KEY/">
+                                        <div class="form-text">请输入完整的 Bark URL，包含末尾的斜杠。</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- [NEW] PushPlus -->
+                        <div class="accordion-item">
+                            <h2 class="accordion-header" id="headingPushPlus">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePushPlus" aria-expanded="false" aria-controls="collapsePushPlus"><strong>➕ PushPlus 通知</strong></button>
+                            </h2>
+                            <div id="collapsePushPlus" class="accordion-collapse collapse" aria-labelledby="headingPushPlus" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body">
+                                    <div class="mb-3">
+                                        <label for="pushplus_token" class="form-label">PushPlus Token</label>
+                                        <input type="text" class="form-control" id="pushplus_token" name="pushplus_token" value="{{ notifications.pushplus_token if notifications }}">
+                                        <div class="form-text">请输入您在 PushPlus 获取到的 Token。</div>
                                     </div>
                                 </div>
                             </div>
