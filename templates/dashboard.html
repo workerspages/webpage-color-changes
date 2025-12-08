@@ -4,39 +4,79 @@
 
 {% block content %}
 <style>
+    /* 裁剪工具相关 */
     #crop-container {
         display: inline-block;
         position: relative;
         line-height: 0;
     }
-    #crop-image {
-        z-index: 1;
-    }
-    #crop-instructions {
-        z-index: 2;
-        pointer-events: none;
-    }
+    #crop-image { z-index: 1; }
+    #crop-instructions { z-index: 2; pointer-events: none; }
     #crop-canvas {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 3;
-        cursor: crosshair;
+        top: 0; left: 0; width: 100%; height: 100%;
+        z-index: 3; cursor: crosshair;
+    }
+    
+    /* 仪表盘特有样式 */
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+    }
+    .table-img-preview {
+        width: 120px;
+        height: 68px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid #E5E7EB;
+        transition: transform 0.2s;
+        background-color: #f3f4f6;
+    }
+    .table-img-preview:hover {
+        transform: scale(1.5);
+        z-index: 10;
+        position: relative;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border-color: var(--primary-color);
+    }
+    .status-badge {
+        font-size: 0.75rem;
+        padding: 0.35em 0.65em;
+        border-radius: 50rem;
+        font-weight: 600;
+    }
+    .url-text {
+        color: var(--text-muted);
+        text-decoration: none;
+        font-size: 0.85rem;
+    }
+    .url-text:hover { color: var(--primary-color); text-decoration: underline; }
+    
+    /* 动画开关 */
+    .form-switch .form-check-input {
+        width: 2.5em;
+        height: 1.25em;
+        cursor: pointer;
+    }
+    .form-switch .form-check-input:checked {
+        background-color: #10B981; /* Green */
+        border-color: #10B981;
     }
 </style>
 
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2">监控仪表盘</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <button type="button" class="btn btn-sm btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bell" viewBox="0 0 16 16"><path d="M8 16a2 2 0 0 0 2-2H6a2 2 0 0 0 2 2zM8 1.918l-.797.161A4.002 4.002 0 0 0 4 6c0 .628-.134 2.197-.459 3.742-.16.767-.376 1.566-.663 2.258h10.244c-.287-.692-.502-1.49-.663-2.258C12.134 8.197 12 6.628 12 6a4.002 4.002 0 0 0-3.203-3.92L8 1.918zM14.22 12c.223.447.481.801.78 1H1c.299-.199.557-.553.78-1C2.68 10.2 3 6.88 3 6c0-2.42 1.72-4.44 4.005-4.901a1 1 0 1 1 1.99 0A5.002 5.002 0 0 1 13 6c0 .88.32 4.2 1.22 6z"/></svg>
-            通知设置
+<div class="dashboard-header">
+    <div>
+        <h2 class="fw-bold mb-1">监控仪表盘</h2>
+        <p class="text-muted mb-0">管理您的网页监控任务与通知</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#notificationSettingsModal">
+            <i class="bi bi-bell-fill me-1"></i> 通知设置
         </button>
-        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus-circle" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/></svg>
-            添加新目标
+        <button type="button" class="btn btn-primary shadow-sm" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
+            <i class="bi bi-plus-lg me-1"></i> 添加新目标
         </button>
     </div>
 </div>
@@ -44,314 +84,399 @@
 {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
     {% for category, message in messages %}
-      <div class="alert alert-{{ category or 'success' }} alert-dismissible fade show" role="alert">
-        {{ message }}
+      <div class="alert alert-{{ category or 'success' }} alert-dismissible fade show shadow-sm border-0" role="alert">
+        <i class="bi bi-check-circle-fill me-2"></i> {{ message }}
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
       </div>
     {% endfor %}
   {% endif %}
 {% endwith %}
 
-<div class="table-responsive">
-    <table class="table table-hover align-middle">
-        <thead>
-            <tr>
-                <th scope="col">状态</th>
-                <th scope="col">监控目标</th>
-                <th scope="col">调度计划</th>
-                <th scope="col" class="text-center">最新快照</th>
-                <th scope="col">上次检查</th>
-                <th scope="col">上次变化</th>
-                <th scope="col" style="min-width: 220px;">操作</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for target in targets %}
-            <tr>
-                <td>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" id="toggle-{{ target.id }}" 
-                               data-id="{{ target.id }}" onchange="toggleTarget(this)" {% if target.is_active %}checked{% endif %}>
-                    </div>
-                </td>
-                <td>
-                    <strong>{{ target.name or '未命名目标' }}</strong><br>
-                    <small><a href="{{ target.url }}" target="_blank" title="{{ target.url }}">{{ target.url[:50] }}{% if target.url|length > 50 %}...{% endif %}</a></small>
-                </td>
-                <td>
-                    {% if target.schedule_type == 'interval' %}
-                        每 {{ target.interval_minutes }} 分钟
-                    {% elif target.schedule_type == 'cron' %}
-                        <code>{{ target.cron_schedule }}</code>
-                    {% else %}
-                        未知
-                    {% endif %}
-                </td>
-                <td class="text-center">
-                    <a href="#" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" 
-                       data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}"
-                       data-img-name="{{ target.name or target.url }}">
-                        <img src="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}?t={{ now().timestamp()|int }}" 
-                             alt="快照预览" class="img-thumbnail" style="max-width: 150px; max-height: 80px; display: none;"
-                             onload="this.style.display='inline-block'"
-                             onerror="this.parentElement.innerHTML = '<span class=&quot;text-muted&quot;>暂无快照</span>'">
-                    </a>
-                </td>
-                <td>{{ target.last_checked.strftime('%y-%m-%d %H:%M:%S') if target.last_checked else '从未' }}</td>
-                <td>{{ target.last_changed.strftime('%y-%m-%d %H:%M:%S') if target.last_changed else '无变化' }}</td>
-                <td>
-                    <div class="btn-group" role="group">
-                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#targetModal"
-                                data-action="edit"
-                                data-id="{{ target.id }}"
-                                data-name="{{ target.name }}"
-                                data-url="{{ target.url }}"
-                                data-schedule-type="{{ target.schedule_type }}"
-                                data-interval-minutes="{{ target.interval_minutes }}"
-                                data-cron="{{ target.cron_schedule }}"
-                                data-width="{{ target.screenshot_width }}"
-                                data-height="{{ target.screenshot_max_height }}"
-                                data-threshold="{{ target.threshold }}"
-                                data-crop="{{ target.crop_area }}"
-                                data-cookies="{{ target.cookies }}"
-                                data-login-method="{{ target.login_method }}"
-                                data-login-username="{{ target.login_username }}"
-                                data-login-password="{{ target.login_password }}"
-                                data-username-selector="{{ target.username_selector }}"
-                                data-password-selector="{{ target.password_selector }}"
-                                data-submit-button-selector="{{ target.submit_button_selector }}"
-                                data-active="{{ 'on' if target.is_active else 'off' }}"
-                                data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) if target.last_checked else '' }}">
-                            编辑
-                        </button>
-                        <form action="{{ url_for('execute_manual_check', target_id=target.id) }}" method="post" style="display:inline;">
-                           <button type="submit" class="btn btn-sm btn-outline-success">执行</button>
-                        </form>
-                        <form action="{{ url_for('delete_target', target_id=target.id) }}" method="post" style="display:inline;" onsubmit="return confirm('您确定要永久删除这个监控目标吗？');">
-                           <button type="submit" class="btn btn-sm btn-outline-danger">删除</button>
-                        </form>
-                    </div>
-                </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="7" class="text-center py-5">
-                <h4>还没有监控目标</h4>
-                <p class="text-muted">请点击右上角的 "添加新目标" 来开始您的第一次监控。</p>
-            </td></tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-custom table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th scope="col" style="width: 5%;">开关</th>
+                    <th scope="col" style="width: 25%;">监控目标</th>
+                    <th scope="col" style="width: 15%;">调度计划</th>
+                    <th scope="col" class="text-center" style="width: 15%;">最新快照</th>
+                    <th scope="col" style="width: 15%;">上次检查</th>
+                    <th scope="col" style="width: 10%;">状态</th>
+                    <th scope="col" class="text-end" style="width: 15%;">操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for target in targets %}
+                <tr>
+                    <td>
+                        <div class="form-check form-switch d-flex justify-content-center">
+                            <input class="form-check-input" type="checkbox" role="switch" id="toggle-{{ target.id }}" 
+                                   data-id="{{ target.id }}" onchange="toggleTarget(this)" {% if target.is_active %}checked{% endif %}
+                                   title="切换启用/禁用状态">
+                        </div>
+                    </td>
+                    <td>
+                        <div class="d-flex flex-column">
+                            <strong class="text-dark">{{ target.name or '未命名目标' }}</strong>
+                            <a href="{{ target.url }}" target="_blank" class="url-text" title="{{ target.url }}">
+                                <i class="bi bi-link-45deg"></i> {{ target.url[:40] }}{% if target.url|length > 40 %}...{% endif %}
+                            </a>
+                        </div>
+                    </td>
+                    <td>
+                        {% if target.schedule_type == 'interval' %}
+                            <span class="badge bg-light text-dark border"><i class="bi bi-clock-history me-1"></i> 每 {{ target.interval_minutes }} 分钟</span>
+                        {% elif target.schedule_type == 'cron' %}
+                            <span class="badge bg-light text-primary border border-primary"><i class="bi bi-code-slash me-1"></i> {{ target.cron_schedule }}</span>
+                        {% else %}
+                            <span class="badge bg-secondary">未知</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <a href="#" data-bs-toggle="modal" data-bs-target="#imagePreviewModal" 
+                           data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}"
+                           data-img-name="{{ target.name or target.url }}">
+                            <img src="{{ url_for('serve_screenshot', filename=target.screenshot_filename) }}?t={{ now().timestamp()|int }}" 
+                                 alt="快照" class="table-img-preview"
+                                 onload="this.style.display='inline-block'"
+                                 onerror="this.src='data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22100%22%20height%3D%2260%22%20viewBox%3D%220%200%20100%2060%22%3E%3Crect%20fill%3D%22%23f3f4f6%22%20width%3D%22100%22%20height%3D%2260%22%2F%3E%3Ctext%20fill%3D%22%239ca3af%22%20font-family%3D%22sans-serif%22%20font-size%3D%2212%22%20dy%3D%2210.5%22%20font-weight%3D%22bold%22%20x%3D%2250%25%22%20y%3D%2250%25%22%20text-anchor%3D%22middle%22%3ENo%20Image%3C%2Ftext%3E%3C%2Fsvg%3E'">
+                        </a>
+                    </td>
+                    <td>
+                        <div class="small text-muted">
+                            <div><i class="bi bi-check2-all text-success"></i> {{ target.last_checked.strftime('%m-%d %H:%M') if target.last_checked else '-' }}</div>
+                        </div>
+                    </td>
+                    <td>
+                        {% if target.last_changed %}
+                        <div class="text-warning small fw-bold" title="{{ target.last_changed.strftime('%Y-%m-%d %H:%M:%S') }}">
+                            <i class="bi bi-exclamation-circle-fill"></i> 有变化
+                        </div>
+                        <div class="text-muted" style="font-size: 0.75rem;">{{ target.last_changed.strftime('%m-%d %H:%M') }}</div>
+                        {% else %}
+                        <div class="text-success small"><i class="bi bi-shield-check"></i> 无变化</div>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-light border text-secondary" data-bs-toggle="modal" data-bs-target="#targetModal"
+                                    data-action="edit"
+                                    data-id="{{ target.id }}"
+                                    data-name="{{ target.name }}"
+                                    data-url="{{ target.url }}"
+                                    data-schedule-type="{{ target.schedule_type }}"
+                                    data-interval-minutes="{{ target.interval_minutes }}"
+                                    data-cron="{{ target.cron_schedule }}"
+                                    data-width="{{ target.screenshot_width }}"
+                                    data-height="{{ target.screenshot_max_height }}"
+                                    data-threshold="{{ target.threshold }}"
+                                    data-crop="{{ target.crop_area }}"
+                                    data-cookies="{{ target.cookies }}"
+                                    data-login-method="{{ target.login_method }}"
+                                    data-login-username="{{ target.login_username }}"
+                                    data-login-password="{{ target.login_password }}"
+                                    data-username-selector="{{ target.username_selector }}"
+                                    data-password-selector="{{ target.password_selector }}"
+                                    data-submit-button-selector="{{ target.submit_button_selector }}"
+                                    data-active="{{ 'on' if target.is_active else 'off' }}"
+                                    data-img-url="{{ url_for('serve_screenshot', filename=target.screenshot_filename) if target.last_checked else '' }}"
+                                    title="编辑">
+                                <i class="bi bi-pencil-square"></i>
+                            </button>
+                            <form action="{{ url_for('execute_manual_check', target_id=target.id) }}" method="post" style="display:inline;">
+                               <button type="submit" class="btn btn-sm btn-light border text-primary" title="立即运行">
+                                   <i class="bi bi-play-fill"></i>
+                               </button>
+                            </form>
+                            <form action="{{ url_for('delete_target', target_id=target.id) }}" method="post" style="display:inline;" onsubmit="return confirm('您确定要永久删除这个监控目标吗？');">
+                               <button type="submit" class="btn btn-sm btn-light border text-danger" title="删除">
+                                   <i class="bi bi-trash"></i>
+                               </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-5">
+                        <div class="text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                            <h5>还没有监控目标</h5>
+                            <p class="mb-3">添加您的第一个监控目标，系统将自动帮您盯着它。</p>
+                            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#targetModal" data-action="add">
+                                开始监控
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
-<!-- 添加/编辑目标的模态框 -->
 <div class="modal fade" id="targetModal" tabindex="-1" aria-labelledby="targetModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <form id="targetForm" method="post">
         <div class="modal-header">
-          <h5 class="modal-title" id="targetModalLabel">添加新目标</h5>
+          <h5 class="modal-title fw-bold" id="targetModalLabel">添加新目标</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
             <input type="hidden" id="target_id" name="target_id">
-            <div class="mb-3"><label for="name" class="form-label">监控名称 (可选)</label><input type="text" class="form-control" id="name" name="name" placeholder="例如：苹果官网首页"></div>
-            <div class="mb-3"><label for="url" class="form-label">监控网址 (URL)</label><input type="url" class="form-control" id="url" name="url" placeholder="https://www.example.com" required></div>
             
-            <div class="mb-3">
-                <label for="schedule_type" class="form-label">调度方式</label>
-                <select class="form-select" id="schedule_type" name="schedule_type">
-                    <option value="interval">相对间隔 (推荐)</option>
-                    <option value="cron">Cron 表达式 (高级)</option>
-                </select>
+            <div class="row g-3 mb-3">
+                <div class="col-md-4">
+                     <label for="name" class="form-label text-muted small fw-bold text-uppercase">名称 (可选)</label>
+                     <input type="text" class="form-control" id="name" name="name" placeholder="例如：苹果官网首页">
+                </div>
+                <div class="col-md-8">
+                    <label for="url" class="form-label text-muted small fw-bold text-uppercase">监控网址 (URL)</label>
+                    <input type="url" class="form-control" id="url" name="url" placeholder="https://..." required>
+                </div>
             </div>
-
-            <div id="interval-fields">
-                <label class="form-label">每隔</label>
-                <div class="input-group mb-3">
-                    <input type="number" class="form-control" name="interval_value" id="interval_value" value="5" required>
-                    <select class="form-select" name="interval_unit" id="interval_unit" style="max-width: 120px;">
-                        <option value="minutes">分钟</option>
-                        <option value="hours">小时</option>
-                        <option value="days">天</option>
-                    </select>
-                    <span class="input-group-text">执行一次</span>
+            
+            <div class="card bg-light border-0 mb-3">
+                <div class="card-body">
+                    <h6 class="card-title fw-bold mb-3"><i class="bi bi-clock"></i> 调度设置</h6>
+                    <div class="row align-items-end">
+                        <div class="col-md-4 mb-2">
+                            <label for="schedule_type" class="form-label">方式</label>
+                            <select class="form-select" id="schedule_type" name="schedule_type">
+                                <option value="interval">相对间隔 (推荐)</option>
+                                <option value="cron">Cron 表达式 (高级)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8 mb-2" id="interval-fields">
+                            <label class="form-label">频率</label>
+                            <div class="input-group">
+                                <input type="number" class="form-control" name="interval_value" id="interval_value" value="5" required>
+                                <select class="form-select" name="interval_unit" id="interval_unit" style="max-width: 120px;">
+                                    <option value="minutes">分钟</option>
+                                    <option value="hours">小时</option>
+                                    <option value="days">天</option>
+                                </select>
+                                <span class="input-group-text bg-white">执行一次</span>
+                            </div>
+                        </div>
+                        <div class="col-md-8 mb-2 d-none" id="cron-fields">
+                            <label for="cron_schedule" class="form-label">Cron 表达式</label>
+                            <input type="text" class="form-control" id="cron_schedule" name="cron_schedule" placeholder="*/5 * * * *">
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div id="cron-fields" class="d-none">
-                <div class="mb-3">
-                    <label for="cron_schedule" class="form-label">Cron 调度计划</label>
-                    <input type="text" class="form-control" id="cron_schedule" name="cron_schedule">
-                    <div class="form-text">格式: 分 时 日 月 周。 <a href="https://crontab.guru/" target="_blank">Cron 表达式助手</a></div>
+            <div class="accordion mb-3" id="advancedSettings">
+                <div class="accordion-item border-0 shadow-sm mb-2 rounded overflow-hidden">
+                    <h2 class="accordion-header" id="headingVisual">
+                        <button class="accordion-button collapsed bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapseVisual" aria-expanded="false">
+                            <i class="bi bi-image me-2"></i> 视觉参数与裁剪
+                        </button>
+                    </h2>
+                    <div id="collapseVisual" class="accordion-collapse collapse" data-bs-parent="#advancedSettings">
+                        <div class="accordion-body bg-white">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">宽度 (px)</label>
+                                    <input type="number" class="form-control" id="screenshot_width" name="screenshot_width" value="1920">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">最大高度 (px)</label>
+                                    <input type="number" class="form-control" id="screenshot_max_height" name="screenshot_max_height" value="15000">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small text-muted">差异阈值 (0-10)</label>
+                                    <input type="number" step="1" class="form-control" id="threshold" name="threshold" value="5">
+                                </div>
+                                <div class="col-12">
+                                    <label for="crop_area" class="form-label">监控区域 (JSON)</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="crop_area" name="crop_area" placeholder="[左, 上, 右, 下]">
+                                        <button class="btn btn-outline-primary" type="button" id="select-area-btn" disabled>
+                                            <i class="bi bi-crop"></i> 交互式选取
+                                        </button>
+                                    </div>
+                                    <div class="form-text small">需先运行一次生成快照后才能使用交互式选取。</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="accordion-item border-0 shadow-sm rounded overflow-hidden">
+                    <h2 class="accordion-header" id="headingLogin">
+                        <button class="accordion-button collapsed bg-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapseLogin" aria-expanded="false">
+                            <i class="bi bi-key me-2"></i> 登录与其他
+                        </button>
+                    </h2>
+                    <div id="collapseLogin" class="accordion-collapse collapse" data-bs-parent="#advancedSettings">
+                        <div class="accordion-body bg-white">
+                            <div class="mb-3">
+                                <label for="login_method" class="form-label">登录方式</label>
+                                <select class="form-select" id="login_method" name="login_method">
+                                    <option value="none" selected>无 (公开页面)</option>
+                                    <option value="cookie">使用 Cookie (推荐)</option>
+                                    <option value="credentials">账号密码 (不推荐)</option>
+                                </select>
+                            </div>
+                            <div id="cookie-fields" class="mb-3 d-none">
+                                <label for="cookies" class="form-label">Cookies (JSON)</label>
+                                <textarea class="form-control font-monospace" id="cookies" name="cookies" rows="3" style="font-size: 0.8rem;"></textarea>
+                            </div>
+                            <div id="credentials-fields" class="d-none">
+                                <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle"></i> 密码明文存储，请谨慎使用。</div>
+                                <div class="row g-2">
+                                    <div class="col-6"><input type="text" class="form-control" id="login_username" name="login_username" placeholder="账号"></div>
+                                    <div class="col-6"><input type="password" class="form-control" id="login_password" name="login_password" placeholder="密码"></div>
+                                    <div class="col-4"><input type="text" class="form-control form-control-sm" id="username_selector" name="username_selector" placeholder="账号框 Selector"></div>
+                                    <div class="col-4"><input type="text" class="form-control form-control-sm" id="password_selector" name="password_selector" placeholder="密码框 Selector"></div>
+                                    <div class="col-4"><input type="text" class="form-control form-control-sm" id="submit_button_selector" name="submit_button_selector" placeholder="登录按钮 Selector"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <hr>
-            <div class="row">
-                <div class="col-md-4 mb-3"><label for="screenshot_width" class="form-label">截图宽度 (px)</label><input type="number" class="form-control" id="screenshot_width" name="screenshot_width" value="1920"></div>
-                <div class="col-md-4 mb-3"><label for="screenshot_max_height" class="form-label">最大高度 (px)</label><input type="number" class="form-control" id="screenshot_max_height" name="screenshot_max_height" value="15000"></div>
-                <div class="col-md-4 mb-3">
-                    <label for="threshold" class="form-label">视觉差异阈值</label>
-                    <input type="number" step="1" class="form-control" id="threshold" name="threshold" value="5">
-                    <div class="form-text">基于汉明距离。0=完全相同, &lt;5=高度相似, &gt;10=显著不同。推荐5-10。</div>
+            <div class="form-check form-switch ps-0">
+                <div class="d-flex align-items-center">
+                    <input class="form-check-input ms-0 me-2" type="checkbox" role="switch" id="is_active" name="is_active" checked>
+                    <label class="form-check-label fw-bold" for="is_active">立即启用此任务</label>
                 </div>
             </div>
-            <div class="mb-3">
-                <label for="crop_area" class="form-label">指定区域 (JSON)</label>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="crop_area" name="crop_area" placeholder="[左, 上, 右, 下] 或点击右侧按钮选取">
-                    <button class="btn btn-outline-secondary" type="button" id="select-area-btn" disabled>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-crop" viewBox="0 0 16 16"><path d="M3.5.5A.5.5 0 0 1 4 1v13h13a.5.5 0 0 1 0 1h-14a.5.5 0 0 1-.5-.5v-14a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1H4v1H1v13a.5.5 0 0 1-1 0v-13a.5.5 0 0 1 .5-.5z"/></svg>
-                        选取区域
-                    </button>
-                </div>
-                <div class="form-text">留空表示监控整个页面。编辑时，需有快照才能选取区域。</div>
-            </div>
-            <hr>
-            <h6 class="mb-3">登录设置</h6>
-            <div class="mb-3"><label for="login_method" class="form-label">登录方式</label><select class="form-select" id="login_method" name="login_method"><option value="none" selected>无 (用于公开页面)</option><option value="cookie">使用 Cookie</option><option value="credentials">使用账号密码</option></select></div>
-            <div id="cookie-fields" class="mb-3 d-none"><label for="cookies" class="form-label">登录 Cookies (JSON 格式)</label><textarea class="form-control" id="cookies" name="cookies" rows="4"></textarea><div class="form-text">请参考文档中关于如何获取 Cookies 的说明。</div></div>
-            <div id="credentials-fields" class="d-none">
-                 <div class="alert alert-warning small"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-exclamation-triangle-fill flex-shrink-0 me-2" viewBox="0 0 16 16" role="img" aria-label="Warning:"><path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/></svg><b>安全警告</b>: 密码将以明文形式存储，请仅用于不敏感的账户。</div>
-                <div class="row">
-                    <div class="col-md-6 mb-3"><label for="login_username" class="form-label">登录账号</label><input type="text" class="form-control" id="login_username" name="login_username"></div>
-                    <div class="col-md-6 mb-3"><label for="login_password" class="form-label">登录密码</label><input type="password" class="form-control" id="login_password" name="login_password"></div>
-                </div>
-                <div class="mb-3"><label for="username_selector" class="form-label">账号输入框的 CSS 选择器</label><input type="text" class="form-control" id="username_selector" name="username_selector" placeholder="#username 或 .user-input"></div>
-                <div class="mb-3"><label for="password_selector" class="form-label">密码输入框的 CSS 选择器</label><input type="text" class="form-control" id="password_selector" name="password_selector" placeholder="#password 或 [name='password']"></div>
-                <div class="mb-3"><label for="submit_button_selector" class="form-label">登录按钮的 CSS 选择器</label><input type="text" class="form-control" id="submit_button_selector" name="submit_button_selector" placeholder="button[type='submit'] 或 .login-button"></div>
-                <div class="form-text">请参考文档中关于如何获取 CSS 选择器的说明。</div>
-            </div>
-            <hr>
-            <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="is_active" name="is_active" checked><label class="form-check-label" for="is_active">启用此监控任务</label></div>
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-          <button type="submit" class="btn btn-primary">保存</button>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-link text-decoration-none text-muted" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary px-4">保存设置</button>
         </div>
       </form>
     </div>
   </div>
 </div>
 
-<!-- 通知设置的模态框 -->
-<div class="modal fade" id="notificationSettingsModal" tabindex="-1" aria-labelledby="notificationModalLabel" aria-hidden="true">
+<div class="modal fade" id="notificationSettingsModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <form action="{{ url_for('save_notifications') }}" method="post">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="notificationModalLabel">全局通知设置</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <h5 class="modal-title fw-bold">全局通知配置</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="accordion" id="notificationAccordion">
-                        <!-- Telegram -->
+                <div class="modal-body p-0">
+                    <div class="accordion accordion-flush" id="notificationAccordion">
                         <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingTelegram">
-                                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTelegram" aria-expanded="true" aria-controls="collapseTelegram"><strong>✈️ Telegram 通知</strong></button>
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTelegram">
+                                    <i class="bi bi-telegram me-2 text-primary"></i> Telegram
+                                </button>
                             </h2>
-                            <div id="collapseTelegram" class="accordion-collapse collapse show" aria-labelledby="headingTelegram" data-bs-parent="#notificationAccordion">
-                                <div class="accordion-body">
-                                    <div class="mb-3"><label for="telegram_bot_token" class="form-label">Bot Token</label><input type="text" class="form-control" id="telegram_bot_token" name="telegram_bot_token" value="{{ notifications.telegram_bot_token if notifications }}"></div>
-                                    <div class="mb-3"><label for="telegram_chat_id" class="form-label">Chat ID</label><input type="text" class="form-control" id="telegram_chat_id" name="telegram_chat_id" value="{{ notifications.telegram_chat_id if notifications }}"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- SMTP -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingSmtp">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSmtp" aria-expanded="false" aria-controls="collapseSmtp"><strong>📧 邮件通知 (SMTP)</strong></button>
-                            </h2>
-                            <div id="collapseSmtp" class="accordion-collapse collapse" aria-labelledby="headingSmtp" data-bs-parent="#notificationAccordion">
-                                <div class="accordion-body">
-                                    <div class="row">
-                                        <div class="col-md-8 mb-3"><label for="smtp_host" class="form-label">SMTP 主机</label><input type="text" class="form-control" id="smtp_host" name="smtp_host" value="{{ notifications.smtp_host if notifications }}"></div>
-                                        <div class="col-md-4 mb-3"><label for="smtp_port" class="form-label">端口</label><input type="number" class="form-control" id="smtp_port" name="smtp_port" value="{{ notifications.smtp_port if notifications }}"></div>
-                                    </div>
-                                    <div class="mb-3"><label for="smtp_user" class="form-label">用户名</label><input type="text" class="form-control" id="smtp_user" name="smtp_user" value="{{ notifications.smtp_user if notifications }}"></div>
-                                    <div class="mb-3"><label for="smtp_password" class="form-label">密码或授权码</label><input type="password" class="form-control" id="smtp_password" name="smtp_password" value=""><div class="form-text">为安全起见，此处不显示已保存的密码。如需修改，请直接输入新密码。</div></div>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3"><label for="smtp_from" class="form-label">发件人地址</label><input type="email" class="form-control" id="smtp_from" name="smtp_from" value="{{ notifications.smtp_from if notifications }}"><div class="form-text">可留空，默认为用户名。</div></div>
-                                        <div class="col-md-6 mb-3"><label for="to_email" class="form-label">收件人地址</label><input type="email" class="form-control" id="to_email" name="to_email" value="{{ notifications.to_email if notifications }}"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <!-- [NEW] Bark -->
-                        <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingBark">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBark" aria-expanded="false" aria-controls="collapseBark"><strong>🐶 Bark 通知</strong></button>
-                            </h2>
-                            <div id="collapseBark" class="accordion-collapse collapse" aria-labelledby="headingBark" data-bs-parent="#notificationAccordion">
-                                <div class="accordion-body">
+                            <div id="collapseTelegram" class="accordion-collapse collapse show" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body bg-light">
                                     <div class="mb-3">
-                                        <label for="bark_url" class="form-label">Bark 推送 URL</label>
-                                        <input type="url" class="form-control" id="bark_url" name="bark_url" value="{{ notifications.bark_url if notifications }}" placeholder="https://api.day.app/YOUR_KEY/">
-                                        <div class="form-text">请输入完整的 Bark URL，包含末尾的斜杠。</div>
+                                        <label class="form-label small text-muted">Bot Token</label>
+                                        <input type="text" class="form-control font-monospace" name="telegram_bot_token" value="{{ notifications.telegram_bot_token if notifications }}">
+                                    </div>
+                                    <div class="mb-0">
+                                        <label class="form-label small text-muted">Chat ID</label>
+                                        <input type="text" class="form-control font-monospace" name="telegram_chat_id" value="{{ notifications.telegram_chat_id if notifications }}">
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <!-- [NEW] PushPlus -->
                         <div class="accordion-item">
-                            <h2 class="accordion-header" id="headingPushPlus">
-                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePushPlus" aria-expanded="false" aria-controls="collapsePushPlus"><strong>➕ PushPlus 通知</strong></button>
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSmtp">
+                                    <i class="bi bi-envelope-at me-2 text-danger"></i> 邮件 (SMTP)
+                                </button>
                             </h2>
-                            <div id="collapsePushPlus" class="accordion-collapse collapse" aria-labelledby="headingPushPlus" data-bs-parent="#notificationAccordion">
-                                <div class="accordion-body">
-                                    <div class="mb-3">
-                                        <label for="pushplus_token" class="form-label">PushPlus Token</label>
-                                        <input type="text" class="form-control" id="pushplus_token" name="pushplus_token" value="{{ notifications.pushplus_token if notifications }}">
-                                        <div class="form-text">请输入您在 PushPlus 获取到的 Token。</div>
+                            <div id="collapseSmtp" class="accordion-collapse collapse" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body bg-light">
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-8"><input type="text" class="form-control" placeholder="SMTP 主机" name="smtp_host" value="{{ notifications.smtp_host if notifications }}"></div>
+                                        <div class="col-4"><input type="number" class="form-control" placeholder="端口" name="smtp_port" value="{{ notifications.smtp_port if notifications }}"></div>
                                     </div>
+                                    <div class="row g-2 mb-2">
+                                        <div class="col-6"><input type="text" class="form-control" placeholder="用户名" name="smtp_user" value="{{ notifications.smtp_user if notifications }}"></div>
+                                        <div class="col-6"><input type="password" class="form-control" placeholder="密码/授权码" name="smtp_password"></div>
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-6"><input type="email" class="form-control" placeholder="发件人 (可选)" name="smtp_from" value="{{ notifications.smtp_from if notifications }}"></div>
+                                        <div class="col-6"><input type="email" class="form-control" placeholder="收件人" name="to_email" value="{{ notifications.to_email if notifications }}"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBark">
+                                    <i class="bi bi-phone me-2 text-dark"></i> Bark (iOS)
+                                </button>
+                            </h2>
+                            <div id="collapseBark" class="accordion-collapse collapse" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body bg-light">
+                                    <input type="url" class="form-control font-monospace" name="bark_url" value="{{ notifications.bark_url if notifications }}" placeholder="https://api.day.app/YOUR_KEY/">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="accordion-item">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePushPlus">
+                                    <i class="bi bi-chat-square-text me-2 text-success"></i> PushPlus
+                                </button>
+                            </h2>
+                            <div id="collapsePushPlus" class="accordion-collapse collapse" data-bs-parent="#notificationAccordion">
+                                <div class="accordion-body bg-light">
+                                    <input type="text" class="form-control font-monospace" name="pushplus_token" value="{{ notifications.pushplus_token if notifications }}" placeholder="Token">
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="submit" class="btn btn-primary">保存通知设置</button>
+                <div class="modal-footer bg-white border-top-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">取消</button>
+                    <button type="submit" class="btn btn-primary">保存配置</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- 图片预览模态框 -->
-<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-labelledby="imagePreviewModalLabel" aria-hidden="true">
+<div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="imagePreviewModalLabel">快照预览</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body text-center">
-        <img src="" id="modalImagePreview" class="img-fluid" alt="完整快照">
+    <div class="modal-content overflow-hidden" style="background: transparent; box-shadow: none;">
+      <div class="modal-body p-0 text-center">
+        <img src="" id="modalImagePreview" class="img-fluid rounded shadow-lg" alt="快照">
+        <button type="button" class="btn btn-light position-absolute top-0 end-0 m-3 rounded-circle shadow" data-bs-dismiss="modal"><i class="bi bi-x-lg"></i></button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- 交互式裁剪区域选择模态框 -->
-<div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
+<div class="modal fade" id="cropModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="cropModalLabel">选取监控区域</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title"><i class="bi bi-crop me-2"></i>选取监控区域</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-body text-center p-0">
+      <div class="modal-body text-center p-0 bg-dark position-relative" style="min-height: 400px; overflow: auto;">
           <div id="crop-container">
-              <p id="crop-instructions" class="position-absolute top-50 start-50 translate-middle bg-dark text-white p-3 rounded">请在图片上按住鼠标左键并拖动以选择区域</p>
+              <div id="crop-instructions" class="position-absolute top-50 start-50 translate-middle bg-dark text-white p-3 rounded opacity-75 shadow">
+                  <i class="bi bi-mouse me-2"></i> 拖拽鼠标框选区域
+              </div>
               <img src="" id="crop-image" class="img-fluid" alt="完整快照">
               <canvas id="crop-canvas"></canvas>
           </div>
       </div>
-      <div class="modal-footer">
-        <span id="coords-display" class="me-auto text-muted"></span>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-        <button type="button" class="btn btn-primary" id="confirm-crop-btn">确认选择</button>
+      <div class="modal-footer justify-content-between">
+        <div class="text-muted font-monospace small" id="coords-display"></div>
+        <div>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+            <button type="button" class="btn btn-primary" id="confirm-crop-btn">确认选择</button>
+        </div>
       </div>
     </div>
   </div>
@@ -361,19 +486,18 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // 图片预览逻辑
     var imagePreviewModal = document.getElementById('imagePreviewModal');
     if(imagePreviewModal) {
         imagePreviewModal.addEventListener('show.bs.modal', function (event) {
             var button = event.relatedTarget;
             var imageUrl = button.getAttribute('data-img-url');
-            var imageName = button.getAttribute('data-img-name');
-            var modalTitle = imagePreviewModal.querySelector('.modal-title');
             var modalImage = imagePreviewModal.querySelector('#modalImagePreview');
-            modalTitle.textContent = '快照预览: ' + imageName;
             modalImage.src = imageUrl + '?t=' + new Date().getTime();
         });
     }
 
+    // 目标表单逻辑 (Add/Edit)
     var targetModal = document.getElementById('targetModal');
     let currentImgUrlForCropper = '';
 
@@ -386,23 +510,24 @@ document.addEventListener('DOMContentLoaded', function () {
             var selectAreaBtn = document.getElementById('select-area-btn');
             
             form.reset();
-            document.getElementById('login_method').dispatchEvent(new Event('change'));
+            // 重置折叠面板
+            document.querySelectorAll('.accordion-collapse').forEach(el => el.classList.remove('show'));
             
             if (action === 'add') {
                 modalTitle.textContent = '添加新目标';
                 form.action = "{{ url_for('add_target') }}";
                 document.getElementById('is_active').checked = true;
+                // 默认值
                 document.getElementById('schedule_type').value = 'interval'; 
                 document.getElementById('interval_value').value = 5;
                 document.getElementById('interval_unit').value = 'minutes';
-                document.getElementById('cron_schedule').value = '*/5 * * * *';
                 document.getElementById('screenshot_width').value = 1920;
                 document.getElementById('screenshot_max_height').value = 15000;
                 document.getElementById('threshold').value = 5;
                 selectAreaBtn.disabled = true;
                 currentImgUrlForCropper = '';
             } else if (action === 'edit') {
-                modalTitle.textContent = '编辑监控目标';
+                modalTitle.textContent = '编辑目标';
                 form.action = "{{ url_for('edit_target') }}";
                 document.getElementById('target_id').value = button.getAttribute('data-id');
                 document.getElementById('name').value = button.getAttribute('data-name');
@@ -420,6 +545,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('submit_button_selector').value = button.getAttribute('data-submit-button-selector');
                 document.getElementById('is_active').checked = (button.getAttribute('data-active') === 'on');
 
+                // 调度逻辑回填
                 const scheduleType = button.getAttribute('data-schedule-type') || 'interval';
                 document.getElementById('schedule_type').value = scheduleType;
                 document.getElementById('cron_schedule').value = button.getAttribute('data-cron');
@@ -428,67 +554,50 @@ document.addEventListener('DOMContentLoaded', function () {
                     const intervalMinutes = parseInt(button.getAttribute('data-interval-minutes') || '5', 10);
                     let value = intervalMinutes;
                     let unit = 'minutes';
-                    if (intervalMinutes > 0 && intervalMinutes % 1440 === 0) {
-                        value = intervalMinutes / 1440;
-                        unit = 'days';
-                    } else if (intervalMinutes > 0 && intervalMinutes % 60 === 0) {
-                        value = intervalMinutes / 60;
-                        unit = 'hours';
-                    }
+                    if (intervalMinutes > 0 && intervalMinutes % 1440 === 0) { value = intervalMinutes / 1440; unit = 'days'; } 
+                    else if (intervalMinutes > 0 && intervalMinutes % 60 === 0) { value = intervalMinutes / 60; unit = 'hours'; }
                     document.getElementById('interval_value').value = value;
                     document.getElementById('interval_unit').value = unit;
                 }
 
-                document.getElementById('login_method').dispatchEvent(new Event('change'));
-                document.getElementById('schedule_type').dispatchEvent(new Event('change'));
-                
                 currentImgUrlForCropper = button.getAttribute('data-img-url');
                 selectAreaBtn.disabled = !currentImgUrlForCropper;
             }
+            
+            // 触发联动显示
+            document.getElementById('login_method').dispatchEvent(new Event('change'));
+            document.getElementById('schedule_type').dispatchEvent(new Event('change'));
         });
     }
     
+    // 登录方式联动
     var loginMethodSelect = document.getElementById('login_method');
     if(loginMethodSelect){
         loginMethodSelect.addEventListener('change', function() {
             var cookieFields = document.getElementById('cookie-fields');
             var credentialsFields = document.getElementById('credentials-fields');
-            if (this.value === 'cookie') {
-                cookieFields.classList.remove('d-none');
-                credentialsFields.classList.add('d-none');
-            } else if (this.value === 'credentials') {
-                cookieFields.classList.add('d-none');
-                credentialsFields.classList.remove('d-none');
-            } else {
-                cookieFields.classList.add('d-none');
-                credentialsFields.classList.add('d-none');
-            }
+            cookieFields.classList.add('d-none');
+            credentialsFields.classList.add('d-none');
+            
+            if (this.value === 'cookie') cookieFields.classList.remove('d-none');
+            else if (this.value === 'credentials') credentialsFields.classList.remove('d-none');
         });
     }
 
+    // 调度方式联动
     const scheduleTypeSelect = document.getElementById('schedule_type');
-    const intervalFields = document.getElementById('interval-fields');
-    const cronFields = document.getElementById('cron-fields');
-    const cronInput = document.getElementById('cron_schedule');
-    const intervalInput = document.getElementById('interval_value');
-
     if (scheduleTypeSelect) {
         scheduleTypeSelect.addEventListener('change', function() {
-            if (this.value === 'cron') {
-                intervalFields.classList.add('d-none');
-                cronFields.classList.remove('d-none');
-                cronInput.required = true;
-                intervalInput.required = false;
-            } else {
-                intervalFields.classList.remove('d-none');
-                cronFields.classList.add('d-none');
-                cronInput.required = false;
-                intervalInput.required = true;
-            }
+            const isCron = this.value === 'cron';
+            document.getElementById('interval-fields').classList.toggle('d-none', isCron);
+            document.getElementById('cron-fields').classList.toggle('d-none', !isCron);
+            document.getElementById('cron_schedule').required = isCron;
+            document.getElementById('interval_value').required = !isCron;
         });
-        scheduleTypeSelect.dispatchEvent(new Event('change'));
     }
 
+    // --- 裁剪功能 (Cropper Logic) ---
+    // 保持原有逻辑，仅适配新UI ID
     const cropModalEl = document.getElementById('cropModal');
     const cropModal = new bootstrap.Modal(cropModalEl);
     const cropImage = document.getElementById('crop-image');
@@ -496,16 +605,14 @@ document.addEventListener('DOMContentLoaded', function () {
     const ctx = cropCanvas.getContext('2d');
     const coordsDisplay = document.getElementById('coords-display');
     let isDrawing = false;
-    let startX, startY, endX, endY;
-    let scaleX = 1;
-    let scaleY = 1;
+    let startX, startY, endX, endY, scaleX, scaleY;
 
     document.getElementById('select-area-btn').addEventListener('click', function() {
         if (currentImgUrlForCropper) {
             cropImage.src = currentImgUrlForCropper + '?t=' + new Date().getTime();
             cropModal.show();
         } else {
-            alert('没有可用的快照用于选择区域。请先至少成功执行一次监控。');
+            alert('请先等待系统执行一次检查并生成快照。');
         }
     });
 
@@ -519,34 +626,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('crop-instructions').style.display = 'block';
                 coordsDisplay.textContent = '';
                 startX = startY = endX = endY = 0;
-            } else {
-                console.error("Image clientWidth is 0. Cannot setup canvas.");
-                alert("无法初始化选取区域功能，图片尺寸加载失败。");
-                cropModal.hide();
             }
         };
-
-        if (cropImage.complete) {
-            setupCanvas();
-        } else {
-            cropImage.onload = setupCanvas;
-        }
+        if (cropImage.complete) setupCanvas();
+        else cropImage.onload = setupCanvas;
     });
 
     const getMousePos = (canvas, evt) => {
         const rect = canvas.getBoundingClientRect();
-        return {
-            x: evt.clientX - rect.left,
-            y: evt.clientY - rect.top
-        };
+        return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
     }
 
     cropCanvas.addEventListener('mousedown', (e) => {
         e.preventDefault();
         const pos = getMousePos(cropCanvas, e);
         isDrawing = true;
-        startX = pos.x;
-        startY = pos.y;
+        startX = pos.x; startY = pos.y;
         document.getElementById('crop-instructions').style.display = 'none';
     });
 
@@ -554,35 +649,25 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!isDrawing) return;
         e.preventDefault();
         const pos = getMousePos(cropCanvas, e);
-        endX = pos.x;
-        endY = pos.y;
+        endX = pos.x; endY = pos.y;
         
         ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
-        ctx.fillStyle = 'rgba(0, 123, 255, 0.3)';
-        ctx.strokeStyle = 'rgba(0, 123, 255, 0.8)';
-        ctx.lineWidth = 1;
-
+        ctx.fillStyle = 'rgba(79, 70, 229, 0.2)'; // Indigo with opacity
+        ctx.strokeStyle = '#4F46E5';
+        ctx.lineWidth = 2;
         ctx.fillRect(startX, startY, endX - startX, endY - startY);
         ctx.strokeRect(startX, startY, endX - startX, endY - startY);
         
-        const currentCoords = [
+        const realCoords = [
             Math.round(Math.min(startX, endX) * scaleX), 
             Math.round(Math.min(startY, endY) * scaleY), 
             Math.round(Math.max(startX, endX) * scaleX), 
             Math.round(Math.max(startY, endY) * scaleY)
         ];
-        coordsDisplay.textContent = `[${currentCoords.join(', ')}]`;
+        coordsDisplay.textContent = `选中区域: [${realCoords.join(', ')}]`;
     });
 
-    const stopDrawing = (e) => {
-        if (!isDrawing) return;
-        e.preventDefault();
-        isDrawing = false;
-        const pos = getMousePos(cropCanvas, e);
-        endX = pos.x;
-        endY = pos.y;
-    }
-
+    const stopDrawing = (e) => { if (isDrawing) { isDrawing = false; } }
     cropCanvas.addEventListener('mouseup', stopDrawing);
     cropCanvas.addEventListener('mouseleave', stopDrawing);
 
@@ -593,35 +678,34 @@ document.addEventListener('DOMContentLoaded', function () {
         const bottom = Math.round(Math.max(startY, endY) * scaleY);
 
         if (right - left > 5 && bottom - top > 5) {
-            const cropAreaValue = `[${left}, ${top}, ${right}, ${bottom}]`;
-            document.getElementById('crop_area').value = cropAreaValue;
+            document.getElementById('crop_area').value = `[${left}, ${top}, ${right}, ${bottom}]`;
         } else {
             document.getElementById('crop_area').value = "";
         }
-        
         ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
         cropModal.hide();
-    });
-    
-    cropModalEl.addEventListener('hidden.bs.modal', function () {
-        ctx.clearRect(0, 0, cropCanvas.width, cropCanvas.height);
     });
 });
 
 function toggleTarget(element) {
     var targetId = element.dataset.id;
+    // 添加禁用状态防止连点
+    element.disabled = true;
+    
     fetch('/target/toggle/' + targetId, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
     })
     .then(response => response.json())
     .then(data => {
+        element.disabled = false;
         if (data.status !== 'success') {
             alert('状态更新失败: ' + data.message);
             element.checked = !element.checked;
         }
     })
     .catch(error => {
+        element.disabled = false;
         console.error('Error:', error);
         alert('网络错误，状态更新失败。');
         element.checked = !element.checked;
