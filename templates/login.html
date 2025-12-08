@@ -1,38 +1,87 @@
-<!-- templates/login.html -->
 {% extends "base.html" %}
 
 {% block title %}登录 - {{ super() }}{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-6 col-lg-4">
-        <div class="card shadow-sm">
-            <div class="card-body">
-                <h3 class="card-title text-center mb-4">系统登录</h3>
-                
-                {% with messages = get_flashed_messages() %}
-                  {% if messages %}
-                    <div class="alert alert-danger" role="alert">
-                      {{ messages[0] }}
-                    </div>
-                  {% endif %}
-                {% endwith %}
+<style>
+    /* 登录页特定覆盖样式 */
+    body {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+    }
+    .navbar, main.mt-5 {
+        display: none !important; /* 隐藏默认导航栏和主容器margin */
+    }
+    .login-container {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    .login-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        width: 100%;
+        max-width: 420px;
+        padding: 3rem 2.5rem;
+    }
+    .login-header {
+        text-align: center;
+        margin-bottom: 2.5rem;
+    }
+    .login-header i {
+        font-size: 3rem;
+        color: var(--primary-color);
+    }
+    .login-header h3 {
+        font-weight: 700;
+        color: #1F2937;
+        margin-top: 1rem;
+    }
+    .form-floating > .form-control:focus ~ label, 
+    .form-floating > .form-control:not(:placeholder-shown) ~ label {
+        color: var(--primary-color);
+        opacity: 0.8;
+    }
+</style>
 
-                <form method="post">
-                    <div class="mb-3">
-                        <label for="username" class="form-label">用户名</label>
-                        <input type="text" class="form-control" id="username" name="username" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="password" class="form-label">密码</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
-                    </div>
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">登 录</button>
-                    </div>
-                </form>
-            </div>
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <i class="bi bi-shield-lock-fill"></i>
+            <h3>系统登录</h3>
+            <p class="text-muted small">请输入管理员凭证以继续</p>
         </div>
+
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <div class="alert alert-danger d-flex align-items-center mb-4" role="alert">
+              <i class="bi bi-exclamation-triangle-fill me-2"></i>
+              <div>{{ messages[0] }}</div>
+            </div>
+          {% endif %}
+        {% endwith %}
+
+        <form method="post">
+            <div class="form-floating mb-3">
+                <input type="text" class="form-control" id="username" name="username" placeholder="用户名" required>
+                <label for="username">用户名</label>
+            </div>
+            <div class="form-floating mb-4">
+                <input type="password" class="form-control" id="password" name="password" placeholder="密码" required>
+                <label for="password">密码</label>
+            </div>
+            <div class="d-grid">
+                <button type="submit" class="btn btn-primary btn-lg py-3">
+                    <span class="fw-bold">登 录</span> <i class="bi bi-arrow-right ms-2"></i>
+                </button>
+            </div>
+        </form>
     </div>
 </div>
 {% endblock %}
