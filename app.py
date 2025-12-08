@@ -96,14 +96,27 @@ class User(db.Model):
 
 
 # --- 3. 辅助函数 ---
+# [MODIFIED] 强制设置窗口大小，解决响应式布局问题
 def get_screenshot(driver, url, width, max_height):
     print(f"[DEBUG][get_screenshot] 准备截图，URL: {url}")
-    total_height = driver.execute_script("return document.body.scrollHeight")
-    if total_height > max_height: total_height = max_height
-    driver.set_window_size(width, total_height if total_height > 0 else 1080)
+    
+    # 1. 访问页面
+    driver.get(url)
+    
+    # 2. 强制设置窗口大小为用户指定的尺寸
+    # 这样可以模拟固定的显示器分辨率 (如 1920x1080)
+    # 不再依赖 document.body.scrollHeight，避免动态加载页面的高度计算干扰
+    driver.set_window_size(width, max_height)
+    
+    print(f"[DEBUG] 已强制设置窗口尺寸: {width}x{max_height}")
+    
+    # 3. 等待页面元素加载和布局稳定
     time.sleep(3)
+    
+    # 4. 截图
     png = driver.get_screenshot_as_png()
     print("[DEBUG][get_screenshot] 截图成功。")
+    
     return Image.open(io.BytesIO(png))
 
 def images_are_different(img1, img2, hamming_distance_threshold):
