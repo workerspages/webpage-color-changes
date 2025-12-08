@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 
 import os
-import subprocess
 import io
 import json
 import time
 import traceback 
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
 from datetime import datetime
-from urllib.parse import urlsplit # 导入 urlsplit 用于更可靠地解析 Bark URL
+from urllib.parse import urlsplit
+from threading import BoundedSemaphore
+
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, send_file
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -39,6 +43,12 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 scheduler = BackgroundScheduler(daemon=True, timezone='Asia/Shanghai')
+
+# --- [NEW] 并发控制 ---
+# 限制同时运行的浏览器实例数量，防止内存耗尽
+# 建议值: 1GB内存设为1-2, 2GB+内存可设为3-4
+MAX_CONCURRENT_BROWSERS = 2
+browser_semaphore = BoundedSemaphore(MAX_CONCURRENT_BROWSERS)
 
 
 # --- 2. 数据库模型 ---
@@ -105,32 +115,41 @@ def images_are_different(img1, img2, hamming_distance_threshold):
     print(f"[DEBUG] 计算出的汉明距离: {distance}")
     return distance > hamming_distance_threshold
 
+# [MODIFIED] 使用 smtplib 替代 msmtp
 def send_email(subject, content, config):
     if not all([config.to_email, config.smtp_host, config.smtp_user, config.smtp_password]):
         print("邮件配置不完整，跳过发送。")
         return
-    msmtp_config = f"""
-defaults
-auth on
-tls on
-tls_trust_file /etc/ssl/certs/ca-certificates.crt
-logfile ~/.msmtp.log
-account default
-host {config.smtp_host}
-port {config.smtp_port}
-from {config.smtp_from or config.smtp_user}
-user {config.smtp_user}
-password {config.smtp_password}
-"""
-    config_path = f'/tmp/msmtprc_{int(time.time())}'
-    with open(config_path, 'w') as f: f.write(msmtp_config)
-    email_text = f"Subject: {subject}\n\n{content}"
+
     try:
-        process = subprocess.Popen(['msmtp', '-C', config_path, config.to_email], stdin=subprocess.PIPE)
-        process.communicate(email_text.encode('utf-8'))
-        print(f"邮件已发送至 {config.to_email}。")
-    except Exception as e: print(f"发送邮件时发生错误: {e}")
-    finally: os.remove(config_path)
+        # 构建邮件对象
+        message = MIMEText(content, 'plain', 'utf-8')
+        message['From'] = Header(config.smtp_from or config.smtp_user, 'utf-8')
+        message['To'] = Header(config.to_email, 'utf-8')
+        message['Subject'] = Header(subject, 'utf-8')
+
+        print(f"[Email] 正在连接 SMTP 服务器: {config.smtp_host}:{config.smtp_port}...")
+        
+        # 根据端口选择连接方式
+        if config.smtp_port == 465:
+            # SSL 连接
+            server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=30)
+        else:
+            # 普通连接 (尝试 STARTTLS)
+            server = smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=30)
+            try:
+                server.starttls()
+            except Exception as e:
+                print(f"[Email] STARTTLS 未启用或失败 (可能无需加密): {e}")
+
+        server.login(config.smtp_user, config.smtp_password)
+        server.sendmail(config.smtp_from or config.smtp_user, [config.to_email], message.as_string())
+        server.quit()
+        print(f"[Email] 邮件已成功发送至 {config.to_email}。")
+        
+    except Exception as e:
+        print(f"[Email] 发送邮件时发生错误: {e}")
+        traceback.print_exc()
 
 def send_telegram_notification(message, config):
     if not config.telegram_bot_token or not config.telegram_chat_id:
@@ -190,104 +209,116 @@ def send_pushplus_notification(title, content, config):
 
 # --- 4. 核心监控与调度逻辑 ---
 def execute_target_check(target_id):
-    print(f"\n[DEBUG] execute_target_check 函数被调用, 目标ID: {target_id}")
-    with app.app_context():
-        target = MonitorTarget.query.get(target_id)
-        notifications_config = NotificationSettings.query.first()
-        if not target: 
-            print(f"[DEBUG] 目标ID {target_id} 在数据库中未找到，任务终止。")
-            return
+    # [MODIFIED] 使用信号量进行并发控制
+    # blocking=False: 如果当前已有足够多的浏览器在运行，则直接跳过本次检查，防止堆积
+    # blocking=True: 会阻塞线程等待，直到有空闲资源
+    acquired = browser_semaphore.acquire(blocking=True, timeout=10) 
+    if not acquired:
+        print(f"[WARN] 系统繁忙，跳过任务 ID: {target_id} (并发限制: {MAX_CONCURRENT_BROWSERS})")
+        return
 
-        print(f"--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始检查: {target.name or target.url} ---")
-        driver = None
-        try:
-            print("[DEBUG] 准备配置 Chrome Options...")
-            chrome_options = Options()
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument(f'--window-size={target.screenshot_width},1080')
-            print("[DEBUG] Chrome Options 配置完成。")
-            
-            print("[DEBUG] 正在初始化 webdriver.Chrome...")
-            driver = webdriver.Chrome(options=chrome_options)
-            print("[DEBUG] webdriver.Chrome 初始化成功！")
-            
-            driver.get(target.url)
-            print(f"[DEBUG] 已访问初始 URL: {target.url}")
-            
-            if target.login_method == 'cookie' and target.cookies:
-                try:
-                    cookies = json.loads(target.cookies)
-                    for cookie in cookies:
-                        if 'expiry' in cookie: cookie['expiry'] = int(cookie['expiry'])
-                        driver.add_cookie(cookie)
-                    print(f"[*] 成功加载 {len(cookies)} 个 Cookies。正在刷新页面...")
-                    driver.get(target.url)
-                except Exception as e: print(f"[!!!] 加载 Cookies 失败: {e}")
+    try:
+        print(f"\n[DEBUG] execute_target_check 函数被调用, 目标ID: {target_id}")
+        with app.app_context():
+            target = MonitorTarget.query.get(target_id)
+            notifications_config = NotificationSettings.query.first()
+            if not target: 
+                print(f"[DEBUG] 目标ID {target_id} 在数据库中未找到，任务终止。")
+                return
 
-            elif target.login_method == 'credentials' and all([target.login_username, target.login_password, target.username_selector, target.password_selector, target.submit_button_selector]):
-                try:
-                    wait = WebDriverWait(driver, 10)
-                    user_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, target.username_selector)))
-                    user_field.send_keys(target.login_username)
-                    driver.find_element(By.CSS_SELECTOR, target.password_selector).send_keys(target.login_password)
-                    driver.find_element(By.CSS_SELECTOR, target.submit_button_selector).click()
-                    print("[*] 已提交登录表单，等待 5 秒让页面跳转...")
-                    time.sleep(5)
-                except Exception as e: print(f"[!!!] 账号密码登录失败: {e}")
-
-            current_img = get_screenshot(driver, target.url, target.screenshot_width, target.screenshot_max_height)
-            screenshot_path = os.path.join(SCREENSHOT_DIR, target.screenshot_filename)
-            
-            if os.path.exists(screenshot_path):
-                print("[DEBUG] 发现旧快照，准备进行对比...")
-                last_img = Image.open(screenshot_path)
+            print(f"--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始检查: {target.name or target.url} ---")
+            driver = None
+            try:
+                print("[DEBUG] 准备配置 Chrome Options...")
+                chrome_options = Options()
+                chrome_options.add_argument('--headless')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument(f'--window-size={target.screenshot_width},1080')
+                print("[DEBUG] Chrome Options 配置完成。")
                 
-                img_to_compare_current = current_img.copy()
-                img_to_compare_last = last_img.copy()
-                try:
-                    crop_box = json.loads(target.crop_area)
-                    if isinstance(crop_box, list) and len(crop_box) == 4 and crop_box[2] > crop_box[0] and crop_box[3] > crop_box[1]:
-                        print(f"[DEBUG] 应用裁剪区域进行对比: {crop_box}")
-                        img_to_compare_current = img_to_compare_current.crop(tuple(crop_box))
-                        img_to_compare_last = img_to_compare_last.crop(tuple(crop_box))
-                except (json.JSONDecodeError, TypeError, ValueError, IndexError): pass
+                print("[DEBUG] 正在初始化 webdriver.Chrome...")
+                driver = webdriver.Chrome(options=chrome_options)
+                print("[DEBUG] webdriver.Chrome 初始化成功！")
+                
+                driver.get(target.url)
+                print(f"[DEBUG] 已访问初始 URL: {target.url}")
+                
+                if target.login_method == 'cookie' and target.cookies:
+                    try:
+                        cookies = json.loads(target.cookies)
+                        for cookie in cookies:
+                            if 'expiry' in cookie: cookie['expiry'] = int(cookie['expiry'])
+                            driver.add_cookie(cookie)
+                        print(f"[*] 成功加载 {len(cookies)} 个 Cookies。正在刷新页面...")
+                        driver.get(target.url)
+                    except Exception as e: print(f"[!!!] 加载 Cookies 失败: {e}")
 
-                if images_are_different(img_to_compare_last, img_to_compare_current, target.threshold):
-                    print(f"[!!!] 检测到变化: {target.url}")
-                    
-                    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    target.last_changed = datetime.now()
-                    
-                    subject = f"网页变化提醒: {target.name or target.url}"
-                    content = f"[{now_str}] 监控目标 '{target.name}' ({target.url}) 检测到页面发生视觉变化。"
-                    tg_message = f"<b>网页变化提醒</b>\n\n<b>目标:</b> {target.name}\n<b>网址:</b> {target.url}\n\n检测到页面有新变化！\n<b>时间:</b> {now_str}"
-                    
-                    if notifications_config:
-                        send_email(subject, content, notifications_config)
-                        send_telegram_notification(tg_message, notifications_config)
-                        send_bark_notification(subject, content, notifications_config)
-                        send_pushplus_notification(subject, content, notifications_config)
-                else: print(f"[-] 页面无变化: {target.url}")
-            else: print(f"[*] 首次截图，保存基准: {target.url}")
+                elif target.login_method == 'credentials' and all([target.login_username, target.login_password, target.username_selector, target.password_selector, target.submit_button_selector]):
+                    try:
+                        wait = WebDriverWait(driver, 10)
+                        user_field = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, target.username_selector)))
+                        user_field.send_keys(target.login_username)
+                        driver.find_element(By.CSS_SELECTOR, target.password_selector).send_keys(target.login_password)
+                        driver.find_element(By.CSS_SELECTOR, target.submit_button_selector).click()
+                        print("[*] 已提交登录表单，等待 5 秒让页面跳转...")
+                        time.sleep(5)
+                    except Exception as e: print(f"[!!!] 账号密码登录失败: {e}")
 
-            current_img.save(screenshot_path)
-            print(f"[DEBUG] 纯净快照已保存至: {screenshot_path}")
-            
-            target.last_checked = datetime.now()
-            db.session.commit()
-        except Exception as e:
-            print(f"[!!!] 处理 {target.url} 时发生严重异常!")
-            traceback.print_exc()
-        finally:
-            if driver:
-                print("[DEBUG] 正在关闭 webdriver...")
-                driver.quit()
-            else:
-                print("[DEBUG] driver 未成功初始化，无需关闭。")
-        print(f"--- 检查结束: {target.name or target.url} ---\n")
+                current_img = get_screenshot(driver, target.url, target.screenshot_width, target.screenshot_max_height)
+                screenshot_path = os.path.join(SCREENSHOT_DIR, target.screenshot_filename)
+                
+                if os.path.exists(screenshot_path):
+                    print("[DEBUG] 发现旧快照，准备进行对比...")
+                    last_img = Image.open(screenshot_path)
+                    
+                    img_to_compare_current = current_img.copy()
+                    img_to_compare_last = last_img.copy()
+                    try:
+                        crop_box = json.loads(target.crop_area)
+                        if isinstance(crop_box, list) and len(crop_box) == 4 and crop_box[2] > crop_box[0] and crop_box[3] > crop_box[1]:
+                            print(f"[DEBUG] 应用裁剪区域进行对比: {crop_box}")
+                            img_to_compare_current = img_to_compare_current.crop(tuple(crop_box))
+                            img_to_compare_last = img_to_compare_last.crop(tuple(crop_box))
+                    except (json.JSONDecodeError, TypeError, ValueError, IndexError): pass
+
+                    if images_are_different(img_to_compare_last, img_to_compare_current, target.threshold):
+                        print(f"[!!!] 检测到变化: {target.url}")
+                        
+                        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        target.last_changed = datetime.now()
+                        
+                        subject = f"网页变化提醒: {target.name or target.url}"
+                        content = f"[{now_str}] 监控目标 '{target.name}' ({target.url}) 检测到页面发生视觉变化。"
+                        tg_message = f"<b>网页变化提醒</b>\n\n<b>目标:</b> {target.name}\n<b>网址:</b> {target.url}\n\n检测到页面有新变化！\n<b>时间:</b> {now_str}"
+                        
+                        if notifications_config:
+                            send_email(subject, content, notifications_config)
+                            send_telegram_notification(tg_message, notifications_config)
+                            send_bark_notification(subject, content, notifications_config)
+                            send_pushplus_notification(subject, content, notifications_config)
+                    else: print(f"[-] 页面无变化: {target.url}")
+                else: print(f"[*] 首次截图，保存基准: {target.url}")
+
+                current_img.save(screenshot_path)
+                print(f"[DEBUG] 纯净快照已保存至: {screenshot_path}")
+                
+                target.last_checked = datetime.now()
+                db.session.commit()
+            except Exception as e:
+                print(f"[!!!] 处理 {target.url} 时发生严重异常!")
+                traceback.print_exc()
+            finally:
+                if driver:
+                    print("[DEBUG] 正在关闭 webdriver...")
+                    driver.quit()
+                else:
+                    print("[DEBUG] driver 未成功初始化，无需关闭。")
+            print(f"--- 检查结束: {target.name or target.url} ---\n")
+    finally:
+        # [MODIFIED] 释放信号量
+        browser_semaphore.release()
 
 def sync_scheduler_from_db():
     with app.app_context():
