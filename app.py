@@ -253,6 +253,10 @@ def execute_target_check(target_id):
                 
                 print("[DEBUG] 正在初始化 webdriver.Chrome...")
                 driver = webdriver.Chrome(options=chrome_options)
+
+                driver.set_page_load_timeout(600)
+                driver.set_script_timeout(600)
+                
                 print("[DEBUG] webdriver.Chrome 初始化成功！")
                 
                 driver.get(target.url)
