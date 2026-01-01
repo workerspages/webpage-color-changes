@@ -112,9 +112,9 @@ def get_screenshot(driver, url, width, max_height):
     
     # 3. 等待页面元素加载和布局稳定
     # YouTube 等动态网站图片加载较慢，Eager模式下必须手动多等一会儿
-    # 建议设置为 45 秒，确保图片、字体和布局完全渲染
-    print("[DEBUG] 等待页面渲染 (45秒)...")
-    time.sleep(45)
+    # 建议设置为 20 秒，确保图片、字体和布局完全渲染
+    print("[DEBUG] 等待页面渲染 (20秒)...")
+    time.sleep(20)
     
     # 4. 截图
     png = driver.get_screenshot_as_png()
