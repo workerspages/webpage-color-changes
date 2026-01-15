@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  web-monitor:
-    image: yesyunxin/webpage-color-changes:latest
-    container_name: webpage_monitor
-    restart: always
+  webpage-color-changes:
+    image: yesyunxin/webpage-color-changes:main
+    container_name: webpage-color-changes
+    restart: unless-stopped
     ports:
       - "8080:5000"
     volumes:
@@ -13,8 +13,7 @@ services:
       - ./instance_data:/app/instance
     environment:
       - TZ=Asia/Shanghai
-      # --- ↓↓↓ 新增管理员凭证配置 ↓↓↓ ---
       - ADMIN_USER=admin
       - ADMIN_PASSWORD=change_this_password
       # (可选) 为 Flask session 设置一个更安全的密钥
-      # - SECRET_KEY=your_super_secret_key_here
+      - SECRET_KEY=your_super_secret_key_here
