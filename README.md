@@ -36,7 +36,7 @@ services:
   webpage-color-changes:
     image: yesyunxin/webpage-color-changes:mariadb
     container_name: webpage-color-changes
-    restart: always
+    restart: unless-stopped
     ports:
       - "8080:5000"
     volumes:
@@ -45,7 +45,6 @@ services:
       - ./instance_data:/app/instance
     environment:
       - TZ=Asia/Shanghai
-      # --- ↓↓↓ 新增管理员凭证配置 ↓↓↓ ---
       - ADMIN_USER=admin
       - ADMIN_PASSWORD=change_this_password
       # (可选) 为 Flask session 设置一个更安全的密钥
@@ -54,7 +53,6 @@ services:
       # 不设置 DATABASE_URL 则使用 SQLite（默认）
       # 连接外部 MariaDB 示例:
       # - DATABASE_URL=mysql+pymysql://username:password@host:3306/webpage-color-changes
-
 ```
 
 ### 2. 启动服务
