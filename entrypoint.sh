@@ -20,4 +20,4 @@ echo "--- 启动 Gunicorn Web 服务器，监听端口 5000 ---"
 # ${PORT:-5000} 的意思是：
 # 如果系统有环境变量 PORT (比如在 BTP 上)，就用那个；
 # 如果没有 (比如在你本地电脑)，就默认用 5000。
-exec gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:${PORT:-5000} app:app
+exec gunicorn --workers 3 --threads 4 --timeout 120 --bind 0.0.0.0:${PORT:-5000} app:app
