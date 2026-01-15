@@ -51,6 +51,14 @@ else:
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# [NEW] 解决云环境数据库连接断开问题 (MySQL server has gone away)
+# pool_pre_ping: 每次使用连接前检测是否存活，断开则自动重连
+# pool_recycle: 280秒主动刷新连接，避开云防火墙300秒杀连接的阈值
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,
+    'pool_recycle': 280,
+}
+
 db = SQLAlchemy(app)
 scheduler = BackgroundScheduler(daemon=True, timezone='Asia/Shanghai')
 
