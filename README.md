@@ -33,23 +33,22 @@
 version: '3.8'
 
 services:
-  web-monitor:
-    # 镜像地址，支持 ghcr.io/workerspages/webpage-color-changes 或 yesyunxin/webpage-color-changes
-    image: yesyunxin/webpage-color-changes:latest
-    container_name: webpage_monitor
-    restart: always
+  webpage-color-changes:
+    image: yesyunxin/webpage-color-changes:main
+    container_name: webpage-color-changes
+    restart: unless-stopped
     ports:
-      - "8080:5000"  # 宿主机端口:容器端口
+      - "8080:5000"
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ./screenshots_data:/app/screenshots  # 持久化截图数据
-      - ./instance_data:/app/instance        # 持久化数据库 (SQLite)
+      - ./screenshots_data:/app/screenshots
+      - ./instance_data:/app/instance
     environment:
       - TZ=Asia/Shanghai
-      # --- 管理员账户配置 ---
-      - ADMIN_USER=admin           # 登录用户名
-      - ADMIN_PASSWORD=admin       # 登录密码 (请务必修改)
-      # - SECRET_KEY=your_secret_key # (可选) Flask Session 密钥
+      - ADMIN_USER=admin
+      - ADMIN_PASSWORD=admin123
+      # (可选) 为 Flask session 设置一个更安全的密钥
+      - SECRET_KEY=your_super_secret_key_here
 ```
 
 ### 2. 启动服务
