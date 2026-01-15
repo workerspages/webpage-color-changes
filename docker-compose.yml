@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  web-monitor:
-    image: yesyunxin/webpage-color-changes:latest
-    container_name: webpage_monitor
+  webpage-color-changes:
+    image: yesyunxin/webpage-color-changes:mariadb
+    container_name: webpage-color-changes
     restart: always
     ports:
       - "8080:5000"
@@ -17,4 +17,8 @@ services:
       - ADMIN_USER=admin
       - ADMIN_PASSWORD=change_this_password
       # (可选) 为 Flask session 设置一个更安全的密钥
-      # - SECRET_KEY=your_super_secret_key_here
+      - SECRET_KEY=your_super_secret_key_here
+      # --- ↓↓↓ 数据库配置（可选）↓↓↓ ---
+      # 不设置 DATABASE_URL 则使用 SQLite（默认）
+      # 连接外部 MariaDB 示例:
+      # - DATABASE_URL=mysql+pymysql://username:password@host:3306/webpage-color-changes

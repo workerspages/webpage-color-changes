@@ -9,3 +9,5 @@ gunicorn
 werkzeug
 # --- [FINAL UPGRADE] 引入感知哈希库 ---
 ImageHash
+# --- MariaDB/MySQL 驱动 ---
+PyMySQL

@@ -38,7 +38,17 @@ if not os.path.exists(SCREENSHOT_DIR): os.makedirs(SCREENSHOT_DIR)
 
 # 配置
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_secret_and_secure_key_for_development')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.instance_path, 'monitoring.db')
+
+# --- 数据库配置（支持 SQLite 和 MariaDB/MySQL）---
+# 优先使用环境变量 DATABASE_URL，未设置则使用 SQLite
+database_url = os.environ.get('DATABASE_URL')
+if database_url:
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    print(f"[DB] 使用外部数据库: {database_url.split('@')[-1] if '@' in database_url else database_url}")
+else:
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.instance_path, 'monitoring.db')
+    print("[DB] 使用本地 SQLite 数据库")
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)

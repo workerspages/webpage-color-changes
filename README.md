@@ -33,23 +33,28 @@
 version: '3.8'
 
 services:
-  web-monitor:
-    # 镜像地址，支持 ghcr.io/workerspages/webpage-color-changes 或 yesyunxin/webpage-color-changes
-    image: yesyunxin/webpage-color-changes:latest
-    container_name: webpage_monitor
+  webpage-color-changes:
+    image: yesyunxin/webpage-color-changes:mariadb
+    container_name: webpage-color-changes
     restart: always
     ports:
-      - "8080:5000"  # 宿主机端口:容器端口
+      - "8080:5000"
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ./screenshots_data:/app/screenshots  # 持久化截图数据
-      - ./instance_data:/app/instance        # 持久化数据库 (SQLite)
+      - ./screenshots_data:/app/screenshots
+      - ./instance_data:/app/instance
     environment:
       - TZ=Asia/Shanghai
-      # --- 管理员账户配置 ---
-      - ADMIN_USER=admin           # 登录用户名
-      - ADMIN_PASSWORD=admin       # 登录密码 (请务必修改)
-      # - SECRET_KEY=your_secret_key # (可选) Flask Session 密钥
+      # --- ↓↓↓ 新增管理员凭证配置 ↓↓↓ ---
+      - ADMIN_USER=admin
+      - ADMIN_PASSWORD=change_this_password
+      # (可选) 为 Flask session 设置一个更安全的密钥
+      - SECRET_KEY=your_super_secret_key_here
+      # --- ↓↓↓ 数据库配置（可选）↓↓↓ ---
+      # 不设置 DATABASE_URL 则使用 SQLite（默认）
+      # 连接外部 MariaDB 示例:
+      # - DATABASE_URL=mysql+pymysql://username:password@host:3306/webpage-color-changes
+
 ```
 
 ### 2. 启动服务
@@ -90,6 +95,36 @@ docker-compose up -d
 如果目标页面需要登录可见：
 *   **方法 A (推荐 - Cookie)**: 使用浏览器插件（如 EditThisCookie）导出目标网站的 Cookies 为 JSON 格式，粘贴到配置框中。
 *   **方法 B (账号密码)**: 填写用户名、密码，并提供对应输入框和登录按钮的 CSS Selector（例如 `#username`, `#password`, `#login-btn`）。系统会在截图前尝试自动登录。
+
+## 🗃️ 数据库配置
+
+系统同时支持 **SQLite** 和 **MariaDB/MySQL** 两种数据库，通过环境变量 `DATABASE_URL` 切换。
+
+### 使用 SQLite（默认）
+
+不需要任何额外配置，系统默认使用 SQLite 存储在 `/app/instance/monitoring.db`。
+
+### 使用外部 MariaDB/MySQL
+
+1. **在 MariaDB 中创建数据库和用户**：
+
+```sql
+CREATE DATABASE webpage_monitor CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'monitor_user'@'%' IDENTIFIED BY 'your_password';
+GRANT ALL PRIVILEGES ON webpage_monitor.* TO 'monitor_user'@'%';
+FLUSH PRIVILEGES;
+```
+
+2. **配置环境变量**：
+
+在 `docker-compose.yml` 中添加 `DATABASE_URL`：
+
+```yaml
+environment:
+  - DATABASE_URL=mysql+pymysql://monitor_user:your_password@192.168.1.100:3306/webpage-color-changes
+```
+
+连接字符串格式：`mysql+pymysql://用户名:密码@主机:端口/数据库名`
 
 ## 📁 目录结构说明
 
