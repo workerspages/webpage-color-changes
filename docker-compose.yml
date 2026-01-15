@@ -14,7 +14,7 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - ADMIN_USER=admin
-      - ADMIN_PASSWORD=change_this_password
+      - ADMIN_PASSWORD=admin123
       # (可选) 为 Flask session 设置一个更安全的密钥
       - SECRET_KEY=your_super_secret_key_here
       # --- ↓↓↓ 数据库配置（可选）↓↓↓ ---
