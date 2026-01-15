@@ -52,7 +52,7 @@ services:
       # --- ↓↓↓ 数据库配置（可选）↓↓↓ ---
       # 不设置 DATABASE_URL 则使用 SQLite（默认）
       # 连接外部 MariaDB 示例:
-      # - DATABASE_URL=mysql+pymysql://username:password@host:3306/webpage-color-changes
+      # - DATABASE_URL=mysql+pymysql://username:password@host:3306/webpage_color_changes
 ```
 
 ### 2. 启动服务
