@@ -16,5 +16,8 @@ flask init-db
 #    'exec' 命令会用 gunicorn 进程替换当前的 shell 进程，
 #    这是容器启动命令的最佳实践，有助于正确处理信号（如 docker stop）。
 echo "--- 启动 Gunicorn Web 服务器，监听端口 5000 ---"
-# exec gunicorn --workers 1 --threads 4 --bind 0.0.0.0:5000 app:app
+
+# ${PORT:-5000} 的意思是：
+# 如果系统有环境变量 PORT (比如在 BTP 上)，就用那个；
+# 如果没有 (比如在你本地电脑)，就默认用 5000。
 exec gunicorn --workers 1 --threads 4 --bind 0.0.0.0:${PORT:-5000} app:app
