@@ -61,6 +61,131 @@ MAX_CONCURRENT_BROWSERS = 2
 browser_semaphore = BoundedSemaphore(MAX_CONCURRENT_BROWSERS)
 
 
+# --- [NEW] 浏览器池 ---
+# 复用 Chrome 实例，避免每次检查都重新启动浏览器
+class BrowserPool:
+    """全局浏览器池，复用 Chrome 实例以提升性能"""
+    
+    def __init__(self, max_size=MAX_CONCURRENT_BROWSERS, idle_timeout=300):
+        self._pool = []  # 空闲浏览器列表
+        self._lock = BoundedSemaphore(1)  # 保护池操作的锁
+        self._max_size = max_size
+        self._idle_timeout = idle_timeout  # 空闲超时秒数
+    
+    def _create_browser(self):
+        """创建新的浏览器实例"""
+        print("[BrowserPool] 正在创建新的 Chrome 实例...")
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.page_load_strategy = 'eager'
+        
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.set_page_load_timeout(600)
+        driver.set_script_timeout(600)
+        print("[BrowserPool] Chrome 实例创建成功！")
+        return driver
+    
+    def _is_healthy(self, driver):
+        """检查浏览器实例是否仍然可用"""
+        try:
+            # 尝试获取当前 URL，如果浏览器崩溃会抛出异常
+            _ = driver.current_url
+            return True
+        except Exception as e:
+            print(f"[BrowserPool] 浏览器实例健康检查失败: {e}")
+            return False
+    
+    def _cleanup_browser(self, driver):
+        """清理浏览器状态，准备复用"""
+        try:
+            # 清除 cookies
+            driver.delete_all_cookies()
+            # 导航到空白页，释放之前页面的资源
+            driver.get("about:blank")
+        except Exception as e:
+            print(f"[BrowserPool] 清理浏览器状态时出错: {e}")
+    
+    def acquire(self):
+        """获取一个可用的浏览器实例"""
+        self._lock.acquire()
+        try:
+            while self._pool:
+                driver, last_used = self._pool.pop(0)
+                if self._is_healthy(driver):
+                    print("[BrowserPool] 复用现有 Chrome 实例")
+                    return driver
+                else:
+                    # 实例不健康，关闭它
+                    try:
+                        driver.quit()
+                    except:
+                        pass
+            # 池中没有可用实例，创建新的
+            return self._create_browser()
+        finally:
+            self._lock.release()
+    
+    def release(self, driver):
+        """归还浏览器实例到池中"""
+        self._lock.acquire()
+        try:
+            if len(self._pool) < self._max_size:
+                self._cleanup_browser(driver)
+                self._pool.append((driver, time.time()))
+                print(f"[BrowserPool] 浏览器已归还池中 (当前池大小: {len(self._pool)})")
+            else:
+                # 池已满，关闭这个实例
+                print("[BrowserPool] 池已满，关闭多余实例")
+                try:
+                    driver.quit()
+                except:
+                    pass
+        finally:
+            self._lock.release()
+    
+    def cleanup_idle(self):
+        """清理空闲超时的浏览器实例"""
+        self._lock.acquire()
+        try:
+            now = time.time()
+            active = []
+            for driver, last_used in self._pool:
+                if now - last_used > self._idle_timeout:
+                    print(f"[BrowserPool] 关闭空闲超时的实例 (空闲 {int(now - last_used)} 秒)")
+                    try:
+                        driver.quit()
+                    except:
+                        pass
+                else:
+                    active.append((driver, last_used))
+            self._pool = active
+            if active:
+                print(f"[BrowserPool] 清理完成，剩余 {len(active)} 个实例")
+        finally:
+            self._lock.release()
+    
+    def shutdown(self):
+        """关闭池中所有浏览器"""
+        self._lock.acquire()
+        try:
+            for driver, _ in self._pool:
+                try:
+                    driver.quit()
+                except:
+                    pass
+            self._pool = []
+            print("[BrowserPool] 所有浏览器实例已关闭")
+        finally:
+            self._lock.release()
+
+# 全局浏览器池实例
+browser_pool = BrowserPool()
+
+
 # --- 2. 数据库模型 ---
 class MonitorTarget(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -243,6 +368,7 @@ def execute_target_check(target_id):
         print(f"[WARN] 系统繁忙，跳过任务 ID: {target_id} (并发限制: {MAX_CONCURRENT_BROWSERS})")
         return
 
+    driver = None
     try:
         print(f"\n[DEBUG] execute_target_check 函数被调用, 目标ID: {target_id}")
         with app.app_context():
@@ -253,28 +379,13 @@ def execute_target_check(target_id):
                 return
 
             print(f"--- [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始检查: {target.name or target.url} ---")
-            driver = None
             try:
-                print("[DEBUG] 准备配置 Chrome Options...")
-                chrome_options = Options()
-                chrome_options.add_argument('--headless')
-                chrome_options.add_argument('--disable-gpu')
-                chrome_options.add_argument('--no-sandbox')
-                chrome_options.add_argument('--disable-dev-shm-usage')
-                chrome_options.add_argument(f'--window-size={target.screenshot_width},1080')
-
-                # 【关键修改】设置页面加载策略为 'eager'
-                # 解决一直加载转圈导致超时的问题
-                chrome_options.page_load_strategy = 'eager'
-                print("[DEBUG] Chrome Options 配置完成。")
+                # [MODIFIED] 从浏览器池获取实例，而非每次新建
+                driver = browser_pool.acquire()
                 
-                print("[DEBUG] 正在初始化 webdriver.Chrome...")
-                driver = webdriver.Chrome(options=chrome_options)
-
-                driver.set_page_load_timeout(600)
-                driver.set_script_timeout(600)
-                
-                print("[DEBUG] webdriver.Chrome 初始化成功！")
+                # 根据目标配置调整窗口大小
+                driver.set_window_size(target.screenshot_width, 1080)
+                print(f"[DEBUG] 已设置窗口大小: {target.screenshot_width}x1080")
                 
                 driver.get(target.url)
                 print(f"[DEBUG] 已访问初始 URL: {target.url}")
@@ -343,12 +454,17 @@ def execute_target_check(target_id):
             except Exception as e:
                 print(f"[!!!] 处理 {target.url} 时发生严重异常!")
                 traceback.print_exc()
-            finally:
+                # 如果发生异常，销毁这个可能有问题的浏览器实例
                 if driver:
-                    print("[DEBUG] 正在关闭 webdriver...")
-                    driver.quit()
-                else:
-                    print("[DEBUG] driver 未成功初始化，无需关闭。")
+                    try:
+                        driver.quit()
+                    except:
+                        pass
+                    driver = None  # 标记已销毁，不再归还
+            finally:
+                # [MODIFIED] 归还浏览器到池中，而非销毁
+                if driver:
+                    browser_pool.release(driver)
             print(f"--- 检查结束: {target.name or target.url} ---\n")
     finally:
         # [MODIFIED] 释放信号量
@@ -572,6 +688,15 @@ with app.app_context():
     if not scheduler.running:
         scheduler.start()
         print("[SCHEDULER] 后台调度器已成功启动。")
+    
+    # [NEW] 添加浏览器池清理任务，每 5 分钟检查一次
+    if not scheduler.get_job('browser_pool_cleanup'):
+        scheduler.add_job(
+            id='browser_pool_cleanup',
+            func=browser_pool.cleanup_idle,
+            trigger=IntervalTrigger(minutes=5, timezone='Asia/Shanghai')
+        )
+        print("[BrowserPool] 已添加浏览器池空闲清理任务 (每5分钟)")
     
     print("[SCHEDULER] 应用启动，正在从数据库同步所有任务...")
     sync_scheduler_from_db()
