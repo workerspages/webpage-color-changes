@@ -274,6 +274,45 @@ def images_are_different(img1, img2, hamming_distance_threshold):
     print(f"[DEBUG] 计算出的汉明距离: {distance}")
     return distance > hamming_distance_threshold
 
+def is_blank_page(img, std_threshold=10):
+    """
+    检测图片是否为空白/加载失败的页面
+    通过计算像素标准差来判断：正常页面有丰富内容，标准差较高；
+    空白/单色页面的标准差接近0
+    
+    Args:
+        img: PIL Image 对象
+        std_threshold: 标准差阈值，低于此值视为空白页（默认10）
+    
+    Returns:
+        bool: True 表示是空白页/加载失败，False 表示正常页面
+    """
+    import numpy as np
+    
+    # 转换为灰度图进行分析，减少计算量
+    gray_img = img.convert('L')
+    pixels = np.array(gray_img)
+    
+    # 计算像素值的标准差
+    std_dev = np.std(pixels)
+    
+    # 计算平均亮度（用于判断是白屏还是黑屏）
+    mean_brightness = np.mean(pixels)
+    
+    print(f"[DEBUG][is_blank_page] 像素标准差: {std_dev:.2f}, 平均亮度: {mean_brightness:.2f}")
+    
+    # 如果标准差过低，说明页面内容单一（空白/单色）
+    if std_dev < std_threshold:
+        if mean_brightness > 240:
+            print(f"[WARN] 检测到白屏页面 (标准差={std_dev:.2f}, 亮度={mean_brightness:.2f})")
+        elif mean_brightness < 15:
+            print(f"[WARN] 检测到黑屏页面 (标准差={std_dev:.2f}, 亮度={mean_brightness:.2f})")
+        else:
+            print(f"[WARN] 检测到单色/异常页面 (标准差={std_dev:.2f}, 亮度={mean_brightness:.2f})")
+        return True
+    
+    return False
+
 # [MODIFIED] 使用 smtplib 替代 msmtp
 def send_email(subject, content, config):
     if not all([config.to_email, config.smtp_host, config.smtp_user, config.smtp_password]):
@@ -421,6 +460,14 @@ def execute_target_check(target_id):
 
                 current_img = get_screenshot(driver, target.url, target.screenshot_width, target.screenshot_max_height)
                 screenshot_path = os.path.join(SCREENSHOT_DIR, target.screenshot_filename)
+                
+                # [NEW] 空白页检测：防止加载失败时的误报
+                if is_blank_page(current_img):
+                    print(f"[!!!] 页面加载失败（检测到空白/异常页面），跳过本次检测: {target.url}")
+                    print(f"[!!!] 不更新截图，不触发变化通知，保留上次正常的快照")
+                    target.last_checked = datetime.now()
+                    db.session.commit()
+                    return  # 直接返回，不保存截图，不进行对比
                 
                 if os.path.exists(screenshot_path):
                     print("[DEBUG] 发现旧快照，准备进行对比...")
