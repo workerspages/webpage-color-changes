@@ -271,7 +271,7 @@ def save_screenshot(target_id, image):
         else:
             screenshot = Screenshot(target_id=target_id, image_data=img_data)
             db.session.add(screenshot)
-        db.session.commit()
+        # 注意：不在这里 commit，由调用者统一管理事务
         print(f"[截图] 已保存到数据库 (target_id={target_id}, size={len(img_data)} bytes)")
     else:
         # 存储到文件系统
