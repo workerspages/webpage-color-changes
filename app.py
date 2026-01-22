@@ -247,7 +247,8 @@ class User(db.Model):
 class Screenshot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     target_id = db.Column(db.Integer, db.ForeignKey('monitor_target.id'), nullable=False, unique=True)
-    image_data = db.Column(db.LargeBinary, nullable=False)  # 存储 PNG 二进制数据
+    # 使用 LONGBLOB (MySQL/MariaDB) 以支持大文件，默认 BLOB 只有 64KB
+    image_data = db.Column(db.LargeBinary(length=2**24), nullable=False)  # 16MB 上限
     updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     
     target = db.relationship('MonitorTarget', backref=db.backref('screenshot', uselist=False, cascade='all, delete-orphan'))
