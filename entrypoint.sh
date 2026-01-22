@@ -20,4 +20,7 @@ echo "--- 启动 Gunicorn Web 服务器，监听端口 5000 ---"
 # ${PORT:-5000} 的意思是：
 # 如果系统有环境变量 PORT (比如在 BTP 上)，就用那个；
 # 如果没有 (比如在你本地电脑)，就默认用 5000。
-exec gunicorn --workers 2 --threads 4 --timeout 120 --bind 0.0.0.0:${PORT:-5000} app:app
+# [MODIFIED] 使用单 worker 模式，确保 APScheduler 后台调度器正常运行
+# 多 worker 模式会导致调度器在不同进程中重复/丢失任务
+# 使用更多线程 (8) 来补偿单 worker 的并发能力
+exec gunicorn --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:${PORT:-5000} app:app
