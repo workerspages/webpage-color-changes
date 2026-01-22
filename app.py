@@ -49,6 +49,11 @@ else:
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(app.instance_path, 'monitoring.db')
     print("[DB] 使用本地 SQLite 数据库")
 
+# [NEW] 根据是否使用外部数据库，决定截图存储方式
+# 外部数据库 -> 存储到数据库 BLOB；本地 SQLite -> 存储到文件系统
+USE_DB_SCREENSHOT = database_url is not None
+print(f"[截图存储] {'数据库模式' if USE_DB_SCREENSHOT else '文件系统模式'}")
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # [NEW] 解决云环境数据库连接断开问题 (MySQL server has gone away)
@@ -238,7 +243,61 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
 
 
+# [NEW] 截图存储模型（用于外部数据库模式）
+class Screenshot(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    target_id = db.Column(db.Integer, db.ForeignKey('monitor_target.id'), nullable=False, unique=True)
+    image_data = db.Column(db.LargeBinary, nullable=False)  # 存储 PNG 二进制数据
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    
+    target = db.relationship('MonitorTarget', backref=db.backref('screenshot', uselist=False, cascade='all, delete-orphan'))
+
+
 # --- 3. 辅助函数 ---
+
+# [NEW] 截图存储辅助函数
+def save_screenshot(target_id, image):
+    """保存截图（根据配置自动选择存储方式）"""
+    if USE_DB_SCREENSHOT:
+        # 存储到数据库
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format='PNG')
+        img_data = img_bytes.getvalue()
+        
+        screenshot = Screenshot.query.filter_by(target_id=target_id).first()
+        if screenshot:
+            screenshot.image_data = img_data
+            screenshot.updated_at = datetime.now()
+        else:
+            screenshot = Screenshot(target_id=target_id, image_data=img_data)
+            db.session.add(screenshot)
+        db.session.commit()
+        print(f"[截图] 已保存到数据库 (target_id={target_id}, size={len(img_data)} bytes)")
+    else:
+        # 存储到文件系统
+        path = os.path.join(SCREENSHOT_DIR, f"target_{target_id}.png")
+        image.save(path)
+        print(f"[截图] 已保存到文件: {path}")
+
+def load_screenshot(target_id):
+    """加载截图（根据配置自动选择存储方式）"""
+    if USE_DB_SCREENSHOT:
+        screenshot = Screenshot.query.filter_by(target_id=target_id).first()
+        if screenshot:
+            return Image.open(io.BytesIO(screenshot.image_data))
+        return None
+    else:
+        path = os.path.join(SCREENSHOT_DIR, f"target_{target_id}.png")
+        if os.path.exists(path):
+            return Image.open(path)
+        return None
+
+def screenshot_exists(target_id):
+    """检查截图是否存在"""
+    if USE_DB_SCREENSHOT:
+        return Screenshot.query.filter_by(target_id=target_id).first() is not None
+    else:
+        return os.path.exists(os.path.join(SCREENSHOT_DIR, f"target_{target_id}.png"))
 # [MODIFIED] 强制设置窗口大小，解决响应式布局问题
 def get_screenshot(driver, url, width, max_height):
     print(f"[DEBUG][get_screenshot] 准备截图，URL: {url}")
@@ -459,7 +518,6 @@ def execute_target_check(target_id):
                     except Exception as e: print(f"[!!!] 账号密码登录失败: {e}")
 
                 current_img = get_screenshot(driver, target.url, target.screenshot_width, target.screenshot_max_height)
-                screenshot_path = os.path.join(SCREENSHOT_DIR, target.screenshot_filename)
                 
                 # [NEW] 空白页检测：防止加载失败时的误报
                 if is_blank_page(current_img):
@@ -469,9 +527,10 @@ def execute_target_check(target_id):
                     db.session.commit()
                     return  # 直接返回，不保存截图，不进行对比
                 
-                if os.path.exists(screenshot_path):
+                # [MODIFIED] 使用辅助函数检查和加载旧截图
+                if screenshot_exists(target.id):
                     print("[DEBUG] 发现旧快照，准备进行对比...")
-                    last_img = Image.open(screenshot_path)
+                    last_img = load_screenshot(target.id)
                     
                     img_to_compare_current = current_img.copy()
                     img_to_compare_last = last_img.copy()
@@ -501,8 +560,8 @@ def execute_target_check(target_id):
                     else: print(f"[-] 页面无变化: {target.url}")
                 else: print(f"[*] 首次截图，保存基准: {target.url}")
 
-                current_img.save(screenshot_path)
-                print(f"[DEBUG] 纯净快照已保存至: {screenshot_path}")
+                # [MODIFIED] 使用辅助函数保存截图
+                save_screenshot(target.id, current_img)
                 
                 target.last_checked = datetime.now()
                 db.session.commit()
@@ -578,23 +637,28 @@ def serve_screenshot(filename):
         target_id_str = filename.replace('target_', '').replace('.png', '')
         target_id = int(target_id_str)
         target = MonitorTarget.query.get(target_id)
-        screenshot_path = os.path.join(SCREENSHOT_DIR, filename)
-        if not target or not os.path.exists(screenshot_path):
+        
+        if not target:
             return "File not found", 404
+        
+        # [MODIFIED] 使用辅助函数加载截图
+        image = load_screenshot(target_id)
+        if not image:
+            return "File not found", 404
+        
+        # 绘制裁剪区域红框
         crop_box = json.loads(target.crop_area or '[]')
         if isinstance(crop_box, list) and len(crop_box) == 4:
-            image = Image.open(screenshot_path)
             draw = ImageDraw.Draw(image)
             draw.rectangle(crop_box, outline="red", width=5)
-            img_io = io.BytesIO()
-            image.save(img_io, 'PNG')
-            img_io.seek(0)
-            return send_file(img_io, mimetype='image/png')
-        else:
-            return send_from_directory(SCREENSHOT_DIR, filename)
+        
+        img_io = io.BytesIO()
+        image.save(img_io, 'PNG')
+        img_io.seek(0)
+        return send_file(img_io, mimetype='image/png')
     except (ValueError, json.JSONDecodeError, IndexError) as e:
         print(f"[WARN] 处理截图请求时出错: {e}")
-        return send_from_directory(SCREENSHOT_DIR, filename)
+        return "Error processing screenshot", 500
 
 @app.route('/')
 def dashboard():
