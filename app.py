@@ -13,6 +13,9 @@ from urllib.parse import urlsplit
 from threading import BoundedSemaphore
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, send_file
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_wtf.csrf import CSRFProtect
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -37,7 +40,37 @@ SCREENSHOT_DIR = "/app/screenshots"
 if not os.path.exists(SCREENSHOT_DIR): os.makedirs(SCREENSHOT_DIR)
 
 # 配置
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'a_very_secret_and_secure_key_for_development')
+# 安全修复: 如果没有设置环境变量SECRET_KEY，则自动生成一个安全的随机字符，不再使用固定的弱前缀
+secret_key = os.environ.get('SECRET_KEY')
+if not secret_key:
+    secret_key = os.urandom(24).hex()
+    print("\n" + "="*60)
+    print("⚠️  [安全警告] 未设置 SECRET_KEY 环境变量！")
+    print("   系统已自动生成一个临时的随机密钥。每次重启此密钥都会改变，")
+    print("   这会导致重启后所有已登录的 Session 失效。")
+    print("   建议: 在部署环境设置固定且强随机的 SECRET_KEY 环境变量。")
+    print("="*60 + "\n")
+app.config['SECRET_KEY'] = secret_key
+
+# --- 全局安全配置 ---
+# 开启 SESSION_COOKIE_HTTPONLY 以防 XSS 窃取 Cookie
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+# 开启 SameSite 限制，减少 CSRF 和跨站跟踪风险
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+# 如果明确配置了 HTTPS，可以开启 SECURE (如果是反向代理且未配置信任头，开启可能导致 session 丢失)
+if os.environ.get('REQUIRE_HTTPS', 'false').lower() == 'true':
+    app.config['SESSION_COOKIE_SECURE'] = True
+
+# --- CSRF 保护配置 ---
+csrf = CSRFProtect(app)
+
+# --- 频率限制 (Rate Limiting) 配置 ---
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
 
 # --- 数据库配置（支持 SQLite 和 MariaDB/MySQL）---
 # 优先使用环境变量 DATABASE_URL，未设置则使用 SQLite
@@ -616,12 +649,21 @@ def sync_scheduler_from_db():
 
 # --- 5. Web 路由 ---
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", error_message="登录尝试次数过多，请稍后再试")
 def login():
     if request.method == 'POST':
         user = User.query.filter_by(username=request.form['username']).first()
-        if user and check_password_hash(user.password_hash, request.form['password']):
-            session['user_id'], session['username'] = user.id, user.username
-            return redirect(url_for('dashboard'))
+        # 修复时序攻击漏洞 (Timing Attack)
+        # 如果未找到用户，执行一次 Dummy 哈希操作以匹配验证通过的时间消耗
+        if user:
+            is_valid = check_password_hash(user.password_hash, request.form['password'])
+            if is_valid:
+                session['user_id'], session['username'] = user.id, user.username
+                return redirect(url_for('dashboard'))
+        else:
+            # 假定此处使用的是 werkzeug 默认的 pbkdf2:sha256
+            check_password_hash('pbkdf2:sha256:600000$dummy$dummy', request.form['password'])
+            
         flash('无效的用户名或密码', 'danger')
     return render_template('login.html')
 

@@ -7,6 +7,9 @@ Flask-SQLAlchemy
 APScheduler
 gunicorn
 werkzeug
+Flask-Limiter
+Flask-WTF
+email-validator
 # --- [FINAL UPGRADE] 引入感知哈希库 ---
 ImageHash
 # --- MariaDB/MySQL 驱动 ---
